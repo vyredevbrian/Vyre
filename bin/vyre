@@ -38,6 +38,7 @@ build_and_run() {
   if [ -f "$dir/src/Dockerfile" ]; then
     docker build -t "$tag" "$dir/src"
   else
+    command -v nixpacks >/dev/null || { echo "nixpacks is not installed here: add a Dockerfile to the repo, or install nixpacks" >&2; exit 1; }
     nixpacks build "$dir/src" --name "$tag"
   fi
 
