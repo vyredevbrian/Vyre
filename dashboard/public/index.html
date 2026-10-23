@@ -3,34 +3,64 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Vyre</title>
+<title>Vyre Deploy</title>
+<meta name="theme-color" content="#060606">
+<link rel="icon" href="assets/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <style>
-:root{--bg:#fff;--fg:#111;--mut:#666;--card:#f5f5f5;--bd:#ddd;--ac:#111;--ac-fg:#fff;--ok:#0a7d33;--bad:#c0262d}
-@media(prefers-color-scheme:dark){:root{--bg:#0b0b0c;--fg:#eee;--mut:#999;--card:#161618;--bd:#2a2a2e;--ac:#eee;--ac-fg:#111;--ok:#3ecf6e;--bad:#ff6b6b}}
-*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
-main{max-width:860px;margin:0 auto;padding:24px 16px}
-h1{font-size:22px;margin:0}header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
-.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:12px}
-input,textarea{width:100%;padding:8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
-button{padding:7px 12px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer;font:inherit}
-button.p{background:var(--ac);color:var(--ac-fg);border-color:var(--ac)}button.d{color:var(--bad)}
-.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1 1 160px}.mut{color:var(--mut)}
-pre{background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:10px;overflow:auto;max-height:300px;font-size:12px;white-space:pre-wrap}
-.bar{height:6px;background:var(--bd);border-radius:3px;overflow:hidden;margin-top:4px}.bar>i{display:block;height:100%;background:var(--ac)}
-.app{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center}.acts{display:flex;gap:6px;flex-wrap:wrap}
-.up{color:var(--ok)}.down{color:var(--bad)}.hide{display:none}
+@import url(assets/fonts.css);
+:root{--bg:#060606;--panel:#0c0c0e;--panel2:#0f1011;--line:#1d1f1b;--line2:#2b2e27;--text:#f4f5f0;--soft:#d3d6cb;--muted:#a4a898;--lime:#cdf714;--glow:rgba(205,247,20,.35);--bad:#ff6b6b;--mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:radial-gradient(60% 50% at 8% 0%,rgba(205,247,20,.07),transparent 60%),var(--bg);color:var(--text);font:16px/1.5 'Archivo',system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+:focus-visible{outline:2px solid var(--lime);outline-offset:3px;border-radius:6px}
+main{max-width:980px;margin:0 auto;padding:0 20px 60px}
+.top{display:flex;align-items:center;justify-content:space-between;height:84px;border-bottom:1px solid var(--line);margin-bottom:34px}
+.top img,.lg img{height:33px;width:auto}
+.eyebrow{color:var(--soft);font-size:11.5px;font-weight:500;font-stretch:112%;letter-spacing:.46em;text-transform:uppercase;margin:0 0 12px}
+h1{margin:0;font-weight:900;font-stretch:125%;text-transform:uppercase;line-height:.98;letter-spacing:.005em;font-size:clamp(30px,4.4vw,52px)}
+h1 em{font-style:normal;color:var(--lime)}
+.sub{color:var(--soft);margin:14px 0 30px;max-width:34em}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:14px}
+.card h2{margin:0 0 12px;font-size:11.5px;font-weight:500;font-stretch:112%;letter-spacing:.34em;text-transform:uppercase;color:var(--soft)}
+input,textarea{width:100%;height:46px;padding:0 14px;border:1px solid var(--line2);border-radius:9px;background:var(--bg);color:var(--text);font:inherit;font-size:14.5px}
+textarea{height:auto;padding:12px 14px;font-family:var(--mono);font-size:13px}
+input::placeholder,textarea::placeholder{color:#6d7165}input:focus,textarea:focus{outline:none;border-color:var(--lime)}
+button{height:42px;padding:0 20px;border-radius:9px;border:1px solid #4a4d44;background:transparent;color:var(--text);cursor:pointer;font:inherit;font-weight:600;font-size:13px;transition:transform .15s,box-shadow .15s,border-color .15s}
+button:hover{border-color:var(--lime)}
+button.p{background:var(--lime);color:#0a0a0a;border-color:var(--lime);font-weight:700;font-stretch:105%;letter-spacing:.1em;text-transform:uppercase}
+button.p:hover{transform:translateY(-1px);box-shadow:0 8px 30px var(--glow)}
+button.d{color:var(--bad);border-color:rgba(255,107,107,.4)}button.d:hover{border-color:var(--bad)}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.row button{align-self:end}
+.mut{color:var(--muted);font-size:14px}
+pre{margin:12px 0 0;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:12px;overflow:auto;max-height:320px;font:12px/1.55 var(--mono);color:var(--soft);white-space:pre-wrap}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px;font-size:13px;color:var(--soft)}
+.stats b{display:block;font-family:var(--mono);font-size:12px;color:var(--text);font-weight:500;letter-spacing:.04em}
+.bar{height:5px;background:var(--line2);border-radius:3px;overflow:hidden;margin-top:8px}.bar>i{display:block;height:100%;background:var(--lime);box-shadow:0 0 10px var(--glow)}
+.app{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center}
+.app a{color:var(--text);text-decoration:underline;text-underline-offset:3px;text-decoration-color:rgba(205,247,20,.6)}.app a:hover{color:var(--lime)}
+.nm{font-weight:800;font-stretch:112%;font-size:17px;margin-right:10px}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:8px;height:26px;padding:0 12px 0 10px;margin-left:4px;border:1px solid rgba(205,247,20,.45);border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.04em;color:#eef3d6}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--lime);animation:pulse 2s ease-out infinite}
+.pill.down{border-color:rgba(255,107,107,.5);color:#ffd0d0}.pill.down i{background:var(--bad);animation:none}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(205,247,20,.55)}70%,100%{box-shadow:0 0 0 7px rgba(205,247,20,0)}}
+@media(prefers-reduced-motion:reduce){.pill i{animation:none}}
+.down{color:var(--bad)}.hide{display:none}
+.lg{max-width:420px;margin:12vh auto 0}.lg img{margin-bottom:28px}
+@media(max-width:600px){main{padding:0 16px 40px}.top{height:68px}}
 </style>
 </head>
 <body>
 <main>
-<div id="login" class="card hide"><h1>Vyre</h1><p class="mut">Sign in</p>
-<form id="lf"><input id="pw" type="password" placeholder="Password" autocomplete="current-password"><p id="le" class="down"></p><button class="p">Sign in</button></form></div>
+<div id="login" class="lg hide"><img src="assets/logo.png" alt="VYRE"><p class="eyebrow">Deploy</p><h1>Sign <em>in</em></h1><p class="sub"></p><div class="card">
+<form id="lf"><input id="pw" type="password" placeholder="Password" autocomplete="current-password"><p id="le" class="down"></p><button class="p">Sign in</button></form></div></div>
 
 <div id="app" class="hide">
-<header><h1>Vyre</h1><button id="out">Sign out</button></header>
-<div class="card" id="sys"></div>
-<div class="card"><b>New project</b>
-<form id="df" class="row" style="margin-top:8px">
+<div class="top"><img src="assets/logo.png" alt="VYRE"><button id="out">Sign out</button></div>
+<p class="eyebrow">Vyre Deploy</p><h1>Your apps. <em>Your server.</em></h1><p class="sub">Push a repo, get a site on your own domain with HTTPS.</p>
+<div class="card stats" id="sys"></div>
+<div class="card"><h2>New project</h2>
+<form id="df" class="row">
 <input name="repo" placeholder="https://github.com/you/repo.git" required>
 <input name="name" placeholder="name (e.g. mysite)" required>
 <input name="domain" placeholder="domain (e.g. mysite.com)" required>
@@ -38,7 +68,7 @@ pre{background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:10
 <input name="branch" placeholder="branch (main)">
 <button class="p">Deploy</button></form><p id="de" class="down"></p></div>
 <div id="apps"></div>
-<div id="detail" class="card hide"><div class="app"><b id="dt"></b><button id="dc">Close</button></div>
+<div id="detail" class="card hide"><div class="app"><h2 id="dt" style="margin:0"></h2><button id="dc">Close</button></div>
 <p class="mut">Environment variables (names only; one KEY=VALUE per line to set)</p>
 <p id="keys" class="mut"></p><textarea id="vars" rows="3" placeholder="KEY=value"></textarea>
 <p><button id="sv">Save (then redeploy)</button></p><pre id="log"></pre></div>
@@ -50,13 +80,13 @@ const api=async(p,o={})=>{const r=await fetch(p,{method:o.m||'GET',headers:{'Con
  if(r.status===401&&p!=='/api/login'){show(false);throw 0}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Error');return j};
 const show=a=>{$('#login').classList.toggle('hide',a);$('#app').classList.toggle('hide',!a)};
 const gb=b=>(b/1073741824).toFixed(1)+' GB';
-const bar=(l,u,t)=>{const d=document.createElement('div');d.textContent=`${l}: ${gb(u)} / ${gb(t)}`;const b=document.createElement('div');b.className='bar';const i=document.createElement('i');i.style.width=Math.min(100,u/t*100||0)+'%';b.append(i);d.append(b);return d};
-async function sys(){const s=await api('/api/system');const e=$('#sys');e.replaceChildren(bar('Memory',s.memTotal-s.memAvailable,s.memTotal),bar('Disk',s.diskUsed,s.diskSize));const l=document.createElement('div');l.className='mut';l.textContent='Load: '+s.load.join(' ');e.append(l)}
+const bar=(l,u,t)=>{const d=document.createElement('div');d.textContent='';const bb=document.createElement('b');bb.textContent=l.toUpperCase()+'  '+gb(u)+' / '+gb(t);d.append(bb);const b=document.createElement('div');b.className='bar';const i=document.createElement('i');i.style.width=Math.min(100,u/t*100||0)+'%';b.append(i);d.append(b);return d};
+async function sys(){const s=await api('/api/system');const u=await api('/api/usage');const e=$('#sys');e.replaceChildren(bar('Memory',s.memTotal-s.memAvailable,s.memTotal),bar('Disk',s.diskUsed,s.diskSize));const l=document.createElement('div');const lb=document.createElement('b');lb.textContent='LOAD  '+s.load.join(' ');l.append(lb);e.append(l);const ub=document.createElement('div');const ubb=document.createElement('b');ubb.textContent='BUILD MIN ('+u.month+')  '+u.buildMinutes;ub.append(ubb);e.append(ub)}
 async function list(){const a=await api('/api/apps');const box=$('#apps');box.replaceChildren();
  if(!a.length){const p=document.createElement('p');p.className='mut';p.textContent='No projects yet.';box.append(p)}
  for(const x of a){const c=document.createElement('div');c.className='card app';const l=document.createElement('div');
-  const t=document.createElement('b');t.textContent=x.name+' ';const lk=document.createElement('a');lk.href='https://'+x.domain;lk.target='_blank';lk.rel='noopener';lk.textContent=x.domain;
-  const st=document.createElement('div');st.className=(x.status.startsWith('Up')?'up':'down');st.textContent=x.deploying?'deploying...':x.status;
+  const t=document.createElement('span');t.className='nm';t.textContent=x.name;const lk=document.createElement('a');lk.href='https://'+x.domain;lk.target='_blank';lk.rel='noopener';lk.textContent=x.domain;
+  const st=document.createElement('div');st.className='pill'+(x.status.startsWith('Up')||x.deploying?'':' down');const dot=document.createElement('i');st.append(dot,x.deploying?'Deploying':x.status.startsWith('Up')?'Live':'Not running');
   l.append(t,lk,st);const acts=document.createElement('div');acts.className='acts';
   const mk=(txt,f,cls)=>{const b=document.createElement('button');b.textContent=txt;if(cls)b.className=cls;b.onclick=f;return b};
   acts.append(mk('Manage',()=>open(x.name)),mk('Redeploy',async()=>{await api(`/api/apps/${x.name}/redeploy`,{m:'POST'});open(x.name)}),

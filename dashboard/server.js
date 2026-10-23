@@ -30,6 +30,7 @@ function authed(req) {
 }
 
 let failures = 0, lockedUntil = 0;
+const USAGE = process.env.VYRE_USAGE || path.join(path.dirname(APPS), 'usage.jsonl');
 const deployLogs = new Map(); // name -> { running, text }
 
 const send = (res, code, body, headers = {}) => {
@@ -56,10 +57,15 @@ function startJob(name, args) {
   if (log && log.running) return false;
   const job = { running: true, text: '' };
   deployLogs.set(name, job);
+  const t0 = Date.now();
   const p = spawn(VYRE, args, { env: { ...process.env, VYRE_APPS: APPS } });
   const add = (c) => { job.text = (job.text + c).slice(-60_000); };
   p.stdout.on('data', add); p.stderr.on('data', add);
-  p.on('close', (code) => { add(`\n[exit ${code}]\n`); job.running = false; job.ok = code === 0; });
+  p.on('close', (code) => {
+    add(`\n[exit ${code}]\n`); job.running = false; job.ok = code === 0;
+    const rec = { app: name, kind: args[0], seconds: Math.round((Date.now() - t0) / 1000), ok: code === 0, at: new Date().toISOString() };
+    fs.appendFile(USAGE, JSON.stringify(rec) + '\n', () => {});
+  });
   return true;
 }
 
@@ -92,6 +98,20 @@ function deployArgs(b) {
   return { name, args: ['deploy', repo, name, domain, '--port', port, '--branch', branch] };
 }
 
+// Build time per app for the current UTC month, from the usage log.
+function usageThisMonth() {
+  const month = new Date().toISOString().slice(0, 7), apps = {};
+  let lines = []; try { lines = fs.readFileSync(USAGE, 'utf8').split('\n').filter(Boolean); } catch {}
+  for (const l of lines) {
+    let r; try { r = JSON.parse(l); } catch { continue; }
+    if (!r.at || !r.at.startsWith(month)) continue;
+    const a = (apps[r.app] ||= { builds: 0, seconds: 0 });
+    a.builds++; a.seconds += r.seconds;
+  }
+  const seconds = Object.values(apps).reduce((n, a) => n + a.seconds, 0);
+  return { month, apps, buildMinutes: Math.round(seconds / 6) / 10 };
+}
+
 const readEnvKeys = (name) => {
   const file = path.join(APPS, name, '.env');
   return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => l.split('=')[0]) : [];
@@ -122,6 +142,8 @@ async function api(req, res, url) {
 
   if (url.pathname === '/api/logout') return send(res, 200, { ok: true }, { 'Set-Cookie': 'vyre=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0' });
 
+  if (url.pathname === '/api/usage') return send(res, 200, usageThisMonth());
+
   if (url.pathname === '/api/system') return send(res, 200, await sysInfo());
 
   if (url.pathname === '/api/apps' && req.method === 'GET') return send(res, 200, await listApps());
@@ -150,6 +172,16 @@ async function api(req, res, url) {
   send(res, 404, { error: 'Not found' });
 }
 
+const MIME = { '.png': 'image/png', '.woff2': 'font/woff2', '.css': 'text/css', '.txt': 'text/plain; charset=utf-8' };
+const PUBLIC = path.join(__dirname, 'public');
+function serveAsset(res, pathname) {
+  const file = path.normalize(path.join(PUBLIC, decodeURIComponent(pathname)));
+  const type = MIME[path.extname(file)];
+  if (!file.startsWith(path.join(PUBLIC, 'assets') + path.sep) || !type || !fs.existsSync(file)) return send(res, 404, 'Not found');
+  res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+  fs.createReadStream(file).pipe(res);
+}
+
 const mcp = require('./mcp')(core, MCP_TOKEN);
 
 http.createServer(async (req, res) => {
@@ -157,8 +189,9 @@ http.createServer(async (req, res) => {
   try {
     if (url.pathname === '/mcp') return await mcp.handle(req, res, readBody);
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
+    if (url.pathname.startsWith('/assets/')) return serveAsset(res, url.pathname);
     if (url.pathname === '/' || url.pathname === '/index.html') {
-      return send(res, 200, fs.readFileSync(path.join(__dirname, 'public/index.html'), 'utf8'), { 'Content-Type': 'text/html; charset=utf-8', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" });
+      return send(res, 200, fs.readFileSync(path.join(__dirname, 'public/index.html'), 'utf8'), { 'Content-Type': 'text/html; charset=utf-8', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; font-src 'self'; img-src 'self'" });
     }
     send(res, 404, 'Not found');
   } catch (e) { send(res, 500, { error: 'Server error' }); console.error(e); }
