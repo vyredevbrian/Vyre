@@ -6,7 +6,7 @@ APPS=${VYRE_APPS:-/opt/vyre/apps}
 
 usage() {
   cat <<USAGE
-vyre deploy <git-url> <name> <domain> [--port 3000] [--branch main]   build + (re)deploy an app
+vyre deploy <git-url> <name> <domain> [--port 3000] [--branch main] [--mem 512m]   build + (re)deploy an app
 vyre redeploy <name>                                                  pull latest and redeploy
 vyre env <name> KEY=VALUE ...                                         set env vars (then redeploy)
 vyre ls                                                               list apps
@@ -16,12 +16,16 @@ USAGE
   exit 1
 }
 
-meta() { grep -E "^$2=" "$APPS/$1/app.conf" | head -1 | cut -d= -f2-; }
+meta() { grep -E "^$2=" "$APPS/$1/app.conf" | head -1 | cut -d= -f2- || true; }
 
 build_and_run() {
   local name=$1 dir=$APPS/$1
   local domain port branch tag
   domain=$(meta "$name" DOMAIN); port=$(meta "$name" PORT); branch=$(meta "$name" BRANCH)
+  local mem; mem=$(meta "$name" MEM); mem=${mem:-${VYRE_MEM:-512m}}
+
+  # One build at a time on the whole server: builds are the RAM spike that forces bigger droplets.
+  exec 9>"$APPS/../.build.lock"; flock 9
 
   if [ -d "$dir/src/.git" ]; then
     git -C "$dir/src" fetch --depth 1 origin "$branch"
@@ -41,6 +45,8 @@ build_and_run() {
   local old; old=$(docker ps -aq --filter "label=vyre.app=$name")
   docker run -d --name "vyre-$name-new" --restart unless-stopped --network vyre \
     --env-file "$dir/.env" -e PORT="$port" \
+    --memory "$mem" --memory-swap "$mem" --cpus "${VYRE_CPUS:-1}" \
+    --log-opt max-size=10m --log-opt max-file=3 \
     --label "vyre.app=$name" \
     --label "caddy=$domain" \
     --label "caddy.reverse_proxy={{upstreams $port}}" \
@@ -64,13 +70,14 @@ cmd=${1:-}; shift || true
 case $cmd in
   deploy)
     repo=${1:-}; name=${2:-}; domain=${3:-}; [ -n "$domain" ] || usage; shift 3
-    port=3000; branch=main
+    port=3000; branch=main; mem=
     while [ $# -gt 0 ]; do
-      case $1 in --port) port=$2;; --branch) branch=$2;; *) usage;; esac; shift 2
+      case $1 in --port) port=$2;; --branch) branch=$2;; --mem) mem=$2;; *) usage;; esac; shift 2
     done
     [[ $name =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "name must be lowercase letters, digits, dashes" >&2; exit 1; }
     mkdir -p "$APPS/$name"
     printf 'REPO=%s\nDOMAIN=%s\nPORT=%s\nBRANCH=%s\n' "$repo" "$domain" "$port" "$branch" > "$APPS/$name/app.conf"
+    [ -n "$mem" ] && echo "MEM=$mem" >> "$APPS/$name/app.conf"
     build_and_run "$name" ;;
   redeploy) [ -n "${1:-}" ] || usage; build_and_run "$1" ;;
   env)

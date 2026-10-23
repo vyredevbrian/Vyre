@@ -30,6 +30,14 @@ ufw allow OpenSSH
 ufw allow 80,443/tcp
 ufw --force enable
 
+# Weekly cleanup so old images and build cache never fill the disk (a bigger disk costs money)
+cat > /etc/cron.weekly/vyre-clean <<'CRON'
+#!/bin/sh
+docker builder prune -af --filter until=168h
+docker image prune -af --filter until=168h
+CRON
+chmod +x /etc/cron.weekly/vyre-clean
+
 # Platform
 if [ -d "$VYRE_HOME/.git" ]; then git -C "$VYRE_HOME" pull --ff-only; else git clone --branch "$BRANCH" "$REPO_URL" "$VYRE_HOME"; fi
 ln -sf "$VYRE_HOME/bin/vyre" /usr/local/bin/vyre
