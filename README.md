@@ -37,3 +37,14 @@ Private repos: use an HTTPS URL with a GitHub token (`https://<token>@github.com
 - Databases, backups, monitoring
 
 Apps run as plain Docker containers, so one droplet is a single point of failure; keep backups (DO droplet backups are +20%).
+
+## MCP server (let Claude manage your server)
+
+The dashboard also serves an MCP endpoint at `https://<DASH_DOMAIN>/mcp` (Streamable HTTP, bearer-token auth).
+`bootstrap.sh` prints the token and stores it as `MCP_TOKEN` in `/opt/vyre/.env`; leave it unset to disable MCP.
+
+Tools: `system_status`, `list_apps`, `deploy_app`, `redeploy_app`, `get_deploy_log`, `get_app_logs`, `list_env_keys`, `set_env`, `delete_app` (needs `confirm` = app name). Env values are never returned.
+
+Claude Code: `claude mcp add --transport http vyre https://deploy.example.com/mcp --header "Authorization: Bearer <MCP_TOKEN>"`
+
+Anyone with the token can deploy code to your server, so treat it like the dashboard password. To apply on an existing server: `git pull` in `/opt/vyre`, then `docker compose --env-file .env -f server/compose.yml up -d --build`.

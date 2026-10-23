@@ -41,6 +41,11 @@ if [ ! -f "$VYRE_HOME/.env" ]; then
   chmod 600 "$VYRE_HOME/.env"
   echo "Dashboard password: $DASH_PASSWORD  (also in $VYRE_HOME/.env)"
 fi
+grep -q '^MCP_TOKEN=' "$VYRE_HOME/.env" || {
+  MCP_TOKEN=$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 40)
+  echo "MCP_TOKEN=$MCP_TOKEN" >> "$VYRE_HOME/.env"
+  echo "MCP token: $MCP_TOKEN  (endpoint https://$DASH_DOMAIN/mcp)"
+}
 docker compose --env-file "$VYRE_HOME/.env" -f "$VYRE_HOME/server/compose.yml" up -d
 
 echo "Done. Point your domains' A records at this server's IP, then open https://$DASH_DOMAIN"

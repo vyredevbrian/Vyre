@@ -11,6 +11,7 @@ const SECRET = process.env.DASH_SECRET || crypto.createHash('sha256').update('vy
 const APPS = process.env.VYRE_APPS || '/opt/vyre/apps';
 const VYRE = process.env.VYRE_BIN || '/opt/vyre/bin/vyre';
 const PORT = process.env.PORT || 3000;
+const MCP_TOKEN = process.env.MCP_TOKEN || '';
 const SESSION_MS = 7 * 24 * 3600 * 1000;
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,40}$/;
@@ -62,6 +63,50 @@ function startJob(name, args) {
   return true;
 }
 
+async function listApps() {
+  const names = fs.existsSync(APPS) ? fs.readdirSync(APPS).filter((n) => meta(n)) : [];
+  return Promise.all(names.map(async (name) => {
+    const m = meta(name);
+    const ps = await run('docker', ['ps', '-a', '--filter', `label=vyre.app=${name}`, '--format', '{{.Status}}']);
+    const job = deployLogs.get(name);
+    return { name, domain: m.DOMAIN, repo: m.REPO.replace(/\/\/[^@/]*@/, '//***@'), branch: m.BRANCH, port: m.PORT, status: ps.out.trim() || 'not running', deploying: !!(job && job.running) };
+  }));
+}
+
+async function sysInfo() {
+  const mem = Object.fromEntries(fs.readFileSync('/proc/meminfo', 'utf8').split('\n').filter(Boolean).map((l) => { const [k, v] = l.split(':'); return [k, parseInt(v, 10) * 1024]; }));
+  const df = await run('df', ['-B1', '--output=size,used', '/']);
+  const [size, used] = (df.out.split('\n')[1] || '').trim().split(/\s+/).map(Number);
+  return { memTotal: mem.MemTotal, memAvailable: mem.MemAvailable, swapTotal: mem.SwapTotal, swapFree: mem.SwapFree, diskSize: size, diskUsed: used, load: fs.readFileSync('/proc/loadavg', 'utf8').split(' ').slice(0, 3) };
+}
+
+// Returns an error string, or null and the vyre args.
+function deployArgs(b) {
+  const { repo = '', name = '', domain = '' } = b;
+  const port = String(b.port || 3000), branch = b.branch || 'main';
+  if (!/^https:\/\/\S+$/.test(repo)) return { error: 'Repo must be an https:// git URL' };
+  if (!NAME_RE.test(name)) return { error: 'Name: lowercase letters, digits, dashes' };
+  if (!DOMAIN_RE.test(domain)) return { error: 'Invalid domain' };
+  if (!/^\d{2,5}$/.test(port)) return { error: 'Invalid port' };
+  if (!BRANCH_RE.test(branch)) return { error: 'Invalid branch' };
+  return { name, args: ['deploy', repo, name, domain, '--port', port, '--branch', branch] };
+}
+
+const readEnvKeys = (name) => {
+  const file = path.join(APPS, name, '.env');
+  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => l.split('=')[0]) : [];
+};
+
+// Returns an error string or null.
+async function setEnv(name, vars) {
+  const pairs = String(vars).split('\n').map((l) => l.trim()).filter(Boolean);
+  for (const kv of pairs) if (!kv.includes('=') || !KEY_RE.test(kv.split('=')[0])) return `Bad line: ${kv.split('=')[0]}`;
+  const r = await run(VYRE, ['env', name, ...pairs]);
+  return r.ok ? null : 'Failed to save';
+}
+
+const core = { APPS, NAME_RE, meta, listApps, sysInfo, deployArgs, startJob, readEnvKeys, setEnv, run, VYRE, deployLogs };
+
 async function api(req, res, url) {
   if (url.pathname === '/api/login' && req.method === 'POST') {
     if (Date.now() < lockedUntil) return send(res, 429, { error: 'Too many attempts, wait a minute' });
@@ -77,34 +122,14 @@ async function api(req, res, url) {
 
   if (url.pathname === '/api/logout') return send(res, 200, { ok: true }, { 'Set-Cookie': 'vyre=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0' });
 
-  if (url.pathname === '/api/system') {
-    const mem = Object.fromEntries(fs.readFileSync('/proc/meminfo', 'utf8').split('\n').filter(Boolean).map((l) => { const [k, v] = l.split(':'); return [k, parseInt(v, 10) * 1024]; }));
-    const df = await run('df', ['-B1', '--output=size,used', '/']);
-    const [size, used] = (df.out.split('\n')[1] || '').trim().split(/\s+/).map(Number);
-    return send(res, 200, { memTotal: mem.MemTotal, memAvailable: mem.MemAvailable, swapTotal: mem.SwapTotal, swapFree: mem.SwapFree, diskSize: size, diskUsed: used, load: fs.readFileSync('/proc/loadavg', 'utf8').split(' ').slice(0, 3) });
-  }
+  if (url.pathname === '/api/system') return send(res, 200, await sysInfo());
 
-  if (url.pathname === '/api/apps' && req.method === 'GET') {
-    const names = fs.existsSync(APPS) ? fs.readdirSync(APPS).filter((n) => meta(n)) : [];
-    const apps = await Promise.all(names.map(async (name) => {
-      const m = meta(name);
-      const ps = await run('docker', ['ps', '-a', '--filter', `label=vyre.app=${name}`, '--format', '{{.Status}}']);
-      const job = deployLogs.get(name);
-      return { name, domain: m.DOMAIN, repo: m.REPO.replace(/\/\/[^@/]*@/, '//***@'), branch: m.BRANCH, port: m.PORT, status: ps.out.trim() || 'not running', deploying: !!(job && job.running) };
-    }));
-    return send(res, 200, apps);
-  }
+  if (url.pathname === '/api/apps' && req.method === 'GET') return send(res, 200, await listApps());
 
   if (url.pathname === '/api/deploy' && req.method === 'POST') {
-    const b = await readBody(req);
-    const { repo = '', name = '', domain = '' } = b;
-    const port = String(b.port || 3000), branch = b.branch || 'main';
-    if (!/^https:\/\/\S+$/.test(repo)) return send(res, 400, { error: 'Repo must be an https:// git URL' });
-    if (!NAME_RE.test(name)) return send(res, 400, { error: 'Name: lowercase letters, digits, dashes' });
-    if (!DOMAIN_RE.test(domain)) return send(res, 400, { error: 'Invalid domain' });
-    if (!/^\d{2,5}$/.test(port)) return send(res, 400, { error: 'Invalid port' });
-    if (!BRANCH_RE.test(branch)) return send(res, 400, { error: 'Invalid branch' });
-    return startJob(name, ['deploy', repo, name, domain, '--port', port, '--branch', branch]) ? send(res, 202, { ok: true }) : send(res, 409, { error: 'Already deploying' });
+    const d = deployArgs(await readBody(req));
+    if (d.error) return send(res, 400, { error: d.error });
+    return startJob(d.name, d.args) ? send(res, 202, { ok: true }) : send(res, 409, { error: 'Already deploying' });
   }
 
   const m = /^\/api\/apps\/([a-z0-9-]+)(?:\/(redeploy|env|logs|deploy-log))?$/.exec(url.pathname);
@@ -115,26 +140,22 @@ async function api(req, res, url) {
     if (action === 'deploy-log') { const j = deployLogs.get(name); return send(res, 200, { running: !!(j && j.running), text: j ? j.text : '' }); }
     if (action === 'logs') { const r = await run('docker', ['logs', '--tail', '300', `vyre-${name}`]); return send(res, 200, { text: r.out }); }
     if (action === 'env') {
-      const file = path.join(APPS, name, '.env');
-      if (req.method === 'GET') {
-        const keys = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => l.split('=')[0]) : [];
-        return send(res, 200, { keys });
-      }
+      if (req.method === 'GET') return send(res, 200, { keys: readEnvKeys(name) });
       if (req.method === 'POST') {
-        const { vars = '' } = await readBody(req);
-        const pairs = String(vars).split('\n').map((l) => l.trim()).filter(Boolean);
-        for (const kv of pairs) if (!KEY_RE.test(kv.split('=')[0]) || !kv.includes('=')) return send(res, 400, { error: `Bad line: ${kv.split('=')[0]}` });
-        const r = await run(VYRE, ['env', name, ...pairs]);
-        return send(res, r.ok ? 200 : 500, { ok: r.ok });
+        const err = await setEnv(name, (await readBody(req)).vars || '');
+        return err ? send(res, 400, { error: err }) : send(res, 200, { ok: true });
       }
     }
   }
   send(res, 404, { error: 'Not found' });
 }
 
+const mcp = require('./mcp')(core, MCP_TOKEN);
+
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
+    if (url.pathname === '/mcp') return await mcp.handle(req, res, readBody);
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
     if (url.pathname === '/' || url.pathname === '/index.html') {
       return send(res, 200, fs.readFileSync(path.join(__dirname, 'public/index.html'), 'utf8'), { 'Content-Type': 'text/html; charset=utf-8', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" });

@@ -18,6 +18,7 @@ services:
     restart: unless-stopped
     environment:
       DASH_PASSWORD: ${DASH_PASSWORD:?set in /opt/vyre/.env}
+      MCP_TOKEN: ${MCP_TOKEN:-}
     networks: [vyre]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
