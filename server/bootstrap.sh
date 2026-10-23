@@ -5,6 +5,7 @@ set -euo pipefail
 
 VYRE_HOME=/opt/vyre
 REPO_URL=${VYRE_REPO:-https://github.com/vyredevbrian/vyre.git}
+BRANCH=${VYRE_BRANCH:-main}
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
@@ -30,7 +31,7 @@ ufw allow 80,443/tcp
 ufw --force enable
 
 # Platform
-if [ -d "$VYRE_HOME/.git" ]; then git -C "$VYRE_HOME" pull --ff-only; else git clone "$REPO_URL" "$VYRE_HOME"; fi
+if [ -d "$VYRE_HOME/.git" ]; then git -C "$VYRE_HOME" pull --ff-only; else git clone --branch "$BRANCH" "$REPO_URL" "$VYRE_HOME"; fi
 ln -sf "$VYRE_HOME/bin/vyre" /usr/local/bin/vyre
 mkdir -p "$VYRE_HOME/apps"
 docker network inspect vyre >/dev/null 2>&1 || docker network create vyre

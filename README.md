@@ -55,3 +55,7 @@ Every deploy records its build time in `/opt/vyre/usage.jsonl`; the dashboard sh
 Billing itself (accounts, plans, payments, an exempt owner account) is not built yet.
 
 Vercel's list prices when checked (Oct 2026, via vercel.com/pricing and its Apr 2026 changelog; re-check before publishing): build minutes Standard $0.014, Enhanced $0.028, Turbo $0.105. One third less would be about $0.0093, $0.0187 and $0.070.
+
+## Create the droplet from the command line
+
+`server/create-droplet.sh` creates the droplet through the DigitalOcean API with your SSH key and runs `bootstrap.sh` on first boot (see the header of the script for the variables). The API token stays on your computer. Until this branch is merged into `main`, pass `VYRE_BRANCH=<branch>`.
