@@ -102,7 +102,9 @@ function deployArgs(b) {
   if (!DOMAIN_RE.test(domain)) return { error: 'Invalid domain' };
   if (!/^\d{2,5}$/.test(port)) return { error: 'Invalid port' };
   if (!BRANCH_RE.test(branch)) return { error: 'Invalid branch' };
-  return { name, args: ['deploy', repo, name, domain, '--port', port, '--branch', branch] };
+  const root = b.root || '';
+  if (root && !(/^[A-Za-z0-9._\/-]+$/.test(root) && !root.includes('..') && !root.startsWith('/'))) return { error: 'Invalid folder' };
+  return { name, args: ['deploy', repo, name, domain, '--port', port, '--branch', branch, ...(root ? ['--root', root] : [])] };
 }
 
 // Build time per app for the current UTC month, from the usage log.

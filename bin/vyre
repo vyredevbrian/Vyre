@@ -3,10 +3,11 @@
 set -euo pipefail
 
 APPS=${VYRE_APPS:-/opt/vyre/apps}
+RUNTIME=$(dirname "$(dirname "$(readlink -f "$0")")")/runtime/vercel
 
 usage() {
   cat <<USAGE
-vyre deploy <git-url> <name> <domain> [--port 3000] [--branch main] [--mem 512m]   build + (re)deploy an app
+vyre deploy <git-url> <name> <domain> [--port 3000] [--branch main] [--mem 512m] [--root dist/site]   build + (re)deploy an app
 vyre redeploy <name>                                                  pull latest and redeploy
 vyre env <name> KEY=VALUE ...                                         set env vars (then redeploy)
 vyre ls                                                               list apps
@@ -17,6 +18,34 @@ USAGE
 }
 
 meta() { grep -E "^$2=" "$APPS/$1/app.conf" | head -1 | cut -d= -f2- || true; }
+
+# A prebuilt site (static files and/or Vercel-style api/*.js functions, no build step) runs on the Vercel-compatible runtime.
+uses_vercel_runtime() {
+  local site=$1
+  [ -f "$site/package.json" ] && grep -q '"build"' "$site/package.json" && return 1   # needs a build: use nixpacks
+  [ -f "$site/vercel.json" ] || [ -d "$site/api" ] || { [ -f "$site/index.html" ] && [ ! -f "$site/package.json" ]; }
+}
+
+build_vercel_runtime() {
+  local name=$1 site=$2 tag=$3 b="$APPS/$1/build"
+  [ -f "$RUNTIME/server.js" ] || { echo "runtime missing at $RUNTIME" >&2; exit 1; }
+  rm -rf "$b"; mkdir -p "$b/site"
+  cp -a "$site/." "$b/site/"; rm -rf "$b/site/.git" "$b/site/node_modules"
+  cp "$RUNTIME/server.js" "$b/server.js"
+  cat > "$b/Dockerfile" <<'DOCKER'
+FROM node:22-slim
+WORKDIR /site
+COPY site/ /site/
+RUN if [ -f package.json ]; then npm install --omit=dev --no-audit --no-fund; fi
+COPY server.js /runtime/server.js
+ENV SITE_ROOT=/site NODE_ENV=production
+USER node
+CMD ["node", "/runtime/server.js"]
+DOCKER
+  echo "Using the Vercel-compatible runtime for $site"
+  docker build -t "$tag" "$b"
+  rm -rf "$b"
+}
 
 build_and_run() {
   local name=$1 dir=$APPS/$1
@@ -35,8 +64,12 @@ build_and_run() {
   fi
 
   tag="vyre/$name:$(git -C "$dir/src" rev-parse --short HEAD)-$(date +%s)"
-  if [ -f "$dir/src/Dockerfile" ]; then
-    docker build -t "$tag" "$dir/src"
+  local root site; root=$(meta "$name" ROOT); site="$dir/src${root:+/$root}"
+  [ -d "$site" ] || { echo "folder '$root' not found in the repo" >&2; exit 1; }
+  if [ -f "$site/Dockerfile" ]; then
+    docker build -t "$tag" "$site"
+  elif uses_vercel_runtime "$site"; then
+    build_vercel_runtime "$name" "$site" "$tag"
   else
     command -v nixpacks >/dev/null || { echo "nixpacks is not installed here: add a Dockerfile to the repo, or install nixpacks" >&2; exit 1; }
     nixpacks build "$dir/src" --name "$tag"
@@ -71,21 +104,25 @@ cmd=${1:-}; shift || true
 case $cmd in
   deploy)
     repo=${1:-}; name=${2:-}; domain=${3:-}; [ -n "$domain" ] || usage; shift 3
-    port=3000; branch=main; mem=
+    port=3000; branch=main; mem=; root=
     while [ $# -gt 0 ]; do
-      case $1 in --port) port=$2;; --branch) branch=$2;; --mem) mem=$2;; *) usage;; esac; shift 2
+      case $1 in --port) port=$2;; --branch) branch=$2;; --mem) mem=$2;; --root) root=$2;; *) usage;; esac; shift 2
     done
+    [[ $root =~ ^[A-Za-z0-9._/-]*$ && $root != *..* && $root != /* ]] || { echo "bad --root" >&2; exit 1; }
     [[ $name =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "name must be lowercase letters, digits, dashes" >&2; exit 1; }
     mkdir -p "$APPS/$name"
     printf 'REPO=%s\nDOMAIN=%s\nPORT=%s\nBRANCH=%s\n' "$repo" "$domain" "$port" "$branch" > "$APPS/$name/app.conf"
     [ -n "$mem" ] && echo "MEM=$mem" >> "$APPS/$name/app.conf"
+    [ -n "$root" ] && echo "ROOT=$root" >> "$APPS/$name/app.conf"
     build_and_run "$name" ;;
   redeploy) [ -n "${1:-}" ] || usage; build_and_run "$1" ;;
   env)
     name=${1:-}; [ -n "$name" ] || usage; shift
     mkdir -p "$APPS/$name"; touch "$APPS/$name/.env"; chmod 600 "$APPS/$name/.env"
     for kv in "$@"; do
-      k=${kv%%=*}; sed -i "/^$k=/d" "$APPS/$name/.env"; echo "$kv" >> "$APPS/$name/.env"
+      k=${kv%%=*}; v=${kv#*=}
+      case $v in \"*\") v=${v#\"}; v=${v%\"};; \'*\') v=${v#\'}; v=${v%\'};; esac   # vercel env pull writes KEY="value"; docker env files would keep the quotes
+      sed -i "/^$k=/d" "$APPS/$name/.env"; echo "$k=$v" >> "$APPS/$name/.env"
     done
     echo "Saved. Run: vyre redeploy $name" ;;
   ls) for d in "$APPS"/*/; do [ -f "$d/app.conf" ] && echo "$(basename "$d")  https://$(meta "$(basename "$d")" DOMAIN)"; done ;;

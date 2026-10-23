@@ -10,7 +10,7 @@ Tier 1 = needed before moving the real sites. Tier 2 = makes it a product. Tier 
 | Feature | Status | Tier | Plan |
 | --- | --- | --- | --- |
 | Deploy from a git repo | [x] manual, from the dashboard, CLI or MCP | 1 | |
-| Run Vercel-style `api/*.js` functions, `vercel.json` rewrites/redirects/headers and crons | [ ] | 1 | Generic runtime image: serves static files and loads `api/` handlers. Needed by the 4 Texas sites, Indiana and Florida (all use `api/` with Neon and Vercel Blob). Vercel Blob and Neon work from any server with their tokens (not yet verified on this server) |
+| Run Vercel-style `api/*.js` functions, `vercel.json` rewrites/redirects/headers and crons | [~] built (`runtime/vercel`), tested locally on the real Spring site and a fixture; not yet run in the server's container | 1 | `vyre deploy ... --root dist/spring` picks it automatically for prebuilt sites. Neon and Vercel Blob packages load; real credentials still to be tested on the server |
 | Auto-deploy on `git push` | [ ] | 1 | GitHub webhook receiver; verify signature; branch `main` to production |
 | Deployment history (commit message, SHA, branch, duration, status, time) | [ ] only the latest build log is kept | 1 | Store one record per deploy; list with filters |
 | Build logs per deployment | [~] latest only, in memory | 1 | Persist to disk with the history |

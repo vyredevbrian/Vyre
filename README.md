@@ -61,3 +61,13 @@ Vercel's list prices when checked (Oct 2026, via vercel.com/pricing and its Apr 
 ## Create the droplet from the command line
 
 `server/create-droplet.sh` creates the droplet through the DigitalOcean API with your SSH key and runs `bootstrap.sh` on first boot (see the header of the script for the variables). The API token stays on your computer. Until this branch is merged into `main`, pass `VYRE_BRANCH=<branch>`.
+
+## Sites built for Vercel (static pages plus `api/*.js`)
+
+Prebuilt sites that use `vercel.json` and an `api/` folder run on `runtime/vercel`, a small Node server that serves the files, runs the functions and applies cleanUrls, trailing slashes, redirects, rewrites, headers and crons. `vyre deploy` chooses it automatically when the repo (or the `--root` folder) has a `vercel.json` or `api/` and no build step; repos with a `Dockerfile` use that, and others use Nixpacks.
+
+```sh
+vyre deploy https://github.com/you/Junk-Junkie-Texas.git spring spring.example.com --root dist/spring
+```
+
+Environment variables (`DATABASE_URL`, `BLOB_READ_WRITE_TOKEN`, ...) are set per app as before. Smoke test: `bash runtime/vercel/test/run.sh`.

@@ -6,7 +6,7 @@ const tools = [
   { name: 'list_apps', description: 'List deployed apps with domain, branch, port and container status.', inputSchema: { type: 'object', properties: {} }, run: (c) => c.listApps() },
   {
     name: 'deploy_app', description: 'Build and deploy a git repo (https URL) to a domain. Runs in the background; poll get_deploy_log. Redeploying an existing name replaces it.',
-    inputSchema: { type: 'object', required: ['repo', 'name', 'domain'], properties: { repo: { type: 'string' }, name: { type: 'string' }, domain: { type: 'string' }, port: { type: 'number' }, branch: { type: 'string' } } },
+    inputSchema: { type: 'object', required: ['repo', 'name', 'domain'], properties: { repo: { type: 'string' }, name: { type: 'string' }, domain: { type: 'string' }, port: { type: 'number' }, branch: { type: 'string' }, root: { type: 'string', description: 'Folder inside the repo to serve, e.g. dist/spring' } } },
     run: async (c, a) => {
       const d = c.deployArgs(a); if (d.error) throw new Error(d.error);
       if (!c.startJob(d.name, d.args)) throw new Error('Already deploying');
