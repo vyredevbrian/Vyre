@@ -43,7 +43,7 @@ const tools = [
     inputSchema: { type: 'object', required: ['name', 'confirm'], properties: { name: { type: 'string' }, confirm: { type: 'string' } } },
     run: async (c, a) => {
       app(c, a.name); if (a.confirm !== a.name) throw new Error('confirm must equal the app name');
-      const r = await c.run(c.VYRE, ['rm', a.name]); c.deployLogs.delete(a.name); if (!r.ok) throw new Error('Delete failed'); return { deleted: a.name };
+      const r = await c.run('bash', [c.VYRE, 'rm', a.name]); c.deployLogs.delete(a.name); if (!r.ok) throw new Error('Delete failed'); return { deleted: a.name };
     },
   },
 ];

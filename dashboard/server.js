@@ -65,7 +65,7 @@ function startJob(name, args) {
   const job = { running: true, text: '' };
   deployLogs.set(name, job);
   const t0 = Date.now();
-  const p = spawn(VYRE, args, { env: { ...process.env, VYRE_APPS: APPS } });
+  const p = spawn('bash', [VYRE, ...args], { env: { ...process.env, VYRE_APPS: APPS } });
   const add = (c) => { job.text = (job.text + c).slice(-60_000); };
   p.stdout.on('data', add); p.stderr.on('data', add);
   p.on('close', (code) => {
@@ -130,7 +130,7 @@ const readEnvKeys = (name) => {
 async function setEnv(name, vars) {
   const pairs = String(vars).split('\n').map((l) => l.trim()).filter(Boolean);
   for (const kv of pairs) if (!kv.includes('=') || !KEY_RE.test(kv.split('=')[0])) return `Bad line: ${kv.split('=')[0]}`;
-  const r = await run(VYRE, ['env', name, ...pairs]);
+  const r = await run('bash', [VYRE, 'env', name, ...pairs]);
   return r.ok ? null : 'Failed to save';
 }
 
@@ -163,7 +163,7 @@ async function api(req, res, url) {
   const m = /^\/api\/apps\/([a-z0-9-]+)(?:\/(redeploy|env|logs|deploy-log))?$/.exec(url.pathname);
   if (m && NAME_RE.test(m[1]) && meta(m[1])) {
     const name = m[1], action = m[2];
-    if (!action && req.method === 'DELETE') { const r = await run(VYRE, ['rm', name]); deployLogs.delete(name); return send(res, r.ok ? 200 : 500, { ok: r.ok, out: r.out }); }
+    if (!action && req.method === 'DELETE') { const r = await run('bash', [VYRE, 'rm', name]); deployLogs.delete(name); return send(res, r.ok ? 200 : 500, { ok: r.ok, out: r.out }); }
     if (action === 'redeploy' && req.method === 'POST') return startJob(name, ['redeploy', name]) ? send(res, 202, { ok: true }) : send(res, 409, { error: 'Already deploying' });
     if (action === 'deploy-log') { const j = deployLogs.get(name); return send(res, 200, { running: !!(j && j.running), text: j ? j.text : '' }); }
     if (action === 'logs') { const r = await run('docker', ['logs', '--tail', '300', `vyre-${name}`]); return send(res, 200, { text: r.out }); }
