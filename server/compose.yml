@@ -1,0 +1,20 @@
+# Edge proxy: Caddy configured from container labels. Handles HTTPS certs automatically.
+services:
+  caddy:
+    image: lucaslorentz/caddy-docker-proxy:2.9-alpine
+    container_name: vyre-caddy
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      CADDY_INGRESS_NETWORKS: vyre
+    networks: [vyre]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - caddy_data:/data
+
+networks:
+  vyre:
+    external: true
+
+volumes:
+  caddy_data:
