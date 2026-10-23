@@ -19,6 +19,7 @@ services:
     environment:
       DASH_PASSWORD: ${DASH_PASSWORD:?set in /opt/vyre/.env}
       MCP_TOKEN: ${MCP_TOKEN:-}
+      DASH_DOMAIN: ${DASH_DOMAIN}
     networks: [vyre]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

@@ -45,7 +45,9 @@ The dashboard also serves an MCP endpoint at `https://<DASH_DOMAIN>/mcp` (Stream
 
 Tools: `system_status`, `list_apps`, `deploy_app`, `redeploy_app`, `get_deploy_log`, `get_app_logs`, `list_env_keys`, `set_env`, `delete_app` (needs `confirm` = app name). Env values are never returned.
 
-Claude Code: `claude mcp add --transport http vyre https://deploy.vyrechain.com/mcp --header "Authorization: Bearer <MCP_TOKEN>"`
+**Claude app / claude.ai connector:** Settings, Connectors, Add custom connector, URL `https://deploy.vyrechain.com/mcp`, leave any client ID and secret fields empty, Connect. A Vyre sign-in page opens; enter the dashboard password. The server speaks OAuth 2.1 (discovery, dynamic client registration, PKCE) and only accepts Claude and localhost callbacks. Changing the dashboard password signs every connection out.
+
+Claude Code (fixed token instead of sign-in): `claude mcp add --transport http vyre https://deploy.vyrechain.com/mcp --header "Authorization: Bearer <MCP_TOKEN>"`
 
 Anyone with the token can deploy code to your server, so treat it like the dashboard password. To apply on an existing server: `git pull` in `/opt/vyre`, then `docker compose --env-file .env -f server/compose.yml up -d --build`.
 

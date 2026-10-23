@@ -52,7 +52,7 @@ function app(c, name) {
   if (typeof name !== 'string' || !c.NAME_RE.test(name) || !c.meta(name)) throw new Error('Unknown app');
 }
 
-module.exports = (core, token) => {
+module.exports = (core, token, oauth) => {
   const eq = (a, b) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && crypto.timingSafeEqual(x, y); };
   const reply = (res, code, body) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(body === undefined ? '' : JSON.stringify(body)); };
   const ok = (id, result) => ({ jsonrpc: '2.0', id, result });
@@ -79,7 +79,10 @@ module.exports = (core, token) => {
     async handle(req, res, readBody) {
       if (!token) return reply(res, 404, { error: 'MCP disabled' });
       const m = /^Bearer (.+)$/.exec(req.headers.authorization || '');
-      if (!m || !eq(m[1], token)) return reply(res, 401, { error: 'Unauthorized' });
+      if (!m || !(eq(m[1], token) || (oauth && oauth.verifyAccess(m[1])))) {
+        const hdr = oauth ? { 'WWW-Authenticate': `Bearer resource_metadata="${oauth.resourceMetadataUrl(req)}"` } : {};
+        res.writeHead(401, { 'Content-Type': 'application/json', ...hdr }); return res.end(JSON.stringify({ error: 'Unauthorized' }));
+      }
       if (req.method !== 'POST') { res.writeHead(405, { Allow: 'POST' }); return res.end(); }
       let body; try { body = await readBody(req); } catch { return reply(res, 400, err(null, -32700, 'Parse error')); }
       const batch = Array.isArray(body);

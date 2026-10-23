@@ -33,6 +33,13 @@ let failures = 0, lockedUntil = 0;
 const USAGE = process.env.VYRE_USAGE || path.join(path.dirname(APPS), 'usage.jsonl');
 const deployLogs = new Map(); // name -> { running, text }
 
+function tryPassword(p) {
+  if (Date.now() < lockedUntil) return 'locked';
+  if (safeEq(String(p), PASSWORD)) { failures = 0; return 'ok'; }
+  if (++failures >= 5) { lockedUntil = Date.now() + 60_000; failures = 0; }
+  return 'bad';
+}
+
 const send = (res, code, body, headers = {}) => {
   const isStr = typeof body === 'string';
   res.writeHead(code, { 'Content-Type': isStr ? 'text/plain; charset=utf-8' : 'application/json', 'X-Content-Type-Options': 'nosniff', ...headers });
@@ -129,13 +136,10 @@ const core = { APPS, NAME_RE, meta, listApps, sysInfo, deployArgs, startJob, rea
 
 async function api(req, res, url) {
   if (url.pathname === '/api/login' && req.method === 'POST') {
-    if (Date.now() < lockedUntil) return send(res, 429, { error: 'Too many attempts, wait a minute' });
     const { password = '' } = await readBody(req);
-    if (safeEq(String(password), PASSWORD)) {
-      failures = 0;
-      return send(res, 200, { ok: true }, { 'Set-Cookie': `vyre=${makeToken()}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_MS / 1000}` });
-    }
-    if (++failures >= 5) { lockedUntil = Date.now() + 60_000; failures = 0; }
+    const r = tryPassword(password);
+    if (r === 'locked') return send(res, 429, { error: 'Too many attempts, wait a minute' });
+    if (r === 'ok') return send(res, 200, { ok: true }, { 'Set-Cookie': `vyre=${makeToken()}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_MS / 1000}` });
     return send(res, 401, { error: 'Wrong password' });
   }
   if (!authed(req)) return send(res, 401, { error: 'Not logged in' });
@@ -182,11 +186,13 @@ function serveAsset(res, pathname) {
   fs.createReadStream(file).pipe(res);
 }
 
-const mcp = require('./mcp')(core, MCP_TOKEN);
+const oauth = MCP_TOKEN ? require('./oauth')({ secret: SECRET, baseUrl: process.env.DASH_DOMAIN ? `https://${process.env.DASH_DOMAIN}` : '', tryPassword }) : null;
+const mcp = require('./mcp')(core, MCP_TOKEN, oauth);
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
+    if (oauth && (url.pathname.startsWith('/.well-known/oauth-') || url.pathname.startsWith('/oauth/')) && await oauth.handle(req, res, url)) return;
     if (url.pathname === '/mcp') return await mcp.handle(req, res, readBody);
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
     if (url.pathname.startsWith('/assets/')) return serveAsset(res, url.pathname);

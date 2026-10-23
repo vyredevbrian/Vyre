@@ -7,7 +7,7 @@ RUN (curl -fsSL https://nixpacks.com/install.sh -o /tmp/nixpacks-install.sh && b
 COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker:27-cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
 WORKDIR /app
-COPY server.js mcp.js ./
+COPY *.js ./
 COPY public ./public
 ENV PORT=3000
 CMD ["node", "server.js"]
