@@ -12,6 +12,20 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - caddy_data:/data
 
+  dashboard:
+    build: ../dashboard
+    container_name: vyre-dashboard
+    restart: unless-stopped
+    environment:
+      DASH_PASSWORD: ${DASH_PASSWORD:?set in /opt/vyre/.env}
+    networks: [vyre]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/vyre:/opt/vyre
+    labels:
+      caddy: ${DASH_DOMAIN:?set in /opt/vyre/.env}
+      caddy.reverse_proxy: "{{upstreams 3000}}"
+
 networks:
   vyre:
     external: true

@@ -6,12 +6,18 @@ A tiny self-hosted Vercel for a DigitalOcean droplet. One server, many sites, au
 - **Docker** runs each project. Uses your `Dockerfile` if present, otherwise **Nixpacks** auto-detects Next.js, Node, Python, static sites, etc.
 - **`vyre` CLI** does clone → build → start → swap (old version is kept if the new one crashes).
 
+## Dashboard
+
+`dashboard/` is a small web UI (no npm dependencies) served at your own domain, e.g. `deploy.example.com`.
+Sign in with the generated password to deploy repos, redeploy, set env vars, read logs, delete apps, and watch server memory/disk.
+It runs on the droplet and calls the `vyre` CLI. Note it mounts the Docker socket, which is root-equivalent: keep the password strong.
+
 ## Setup
 
 1. Create a droplet: Ubuntu 24.04, 2 GB RAM / 1 vCPU (~$12/mo) is a good start. Add your SSH key.
-2. SSH in and run `server/bootstrap.sh` (as root). It installs Docker + Nixpacks, enables the firewall and 2 GB swap, and starts Caddy.
+2. Point an `A` record for your dashboard domain (e.g. `deploy.example.com`) at the droplet IP. SSH in and run `DASH_DOMAIN=deploy.example.com bash server/bootstrap.sh` as root; it prints the dashboard password. It installs Docker + Nixpacks, enables the firewall and 2 GB swap, and starts Caddy.
 3. In your DNS, point an `A` record for each domain at the droplet IP.
-4. Deploy:
+4. Open `https://deploy.example.com`, or use the CLI:
 
 ```sh
 vyre deploy https://github.com/you/site.git mysite mysite.com

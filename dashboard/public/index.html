@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vyre</title>
+<style>
+:root{--bg:#fff;--fg:#111;--mut:#666;--card:#f5f5f5;--bd:#ddd;--ac:#111;--ac-fg:#fff;--ok:#0a7d33;--bad:#c0262d}
+@media(prefers-color-scheme:dark){:root{--bg:#0b0b0c;--fg:#eee;--mut:#999;--card:#161618;--bd:#2a2a2e;--ac:#eee;--ac-fg:#111;--ok:#3ecf6e;--bad:#ff6b6b}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:860px;margin:0 auto;padding:24px 16px}
+h1{font-size:22px;margin:0}header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:12px}
+input,textarea{width:100%;padding:8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
+button{padding:7px 12px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer;font:inherit}
+button.p{background:var(--ac);color:var(--ac-fg);border-color:var(--ac)}button.d{color:var(--bad)}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1 1 160px}.mut{color:var(--mut)}
+pre{background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:10px;overflow:auto;max-height:300px;font-size:12px;white-space:pre-wrap}
+.bar{height:6px;background:var(--bd);border-radius:3px;overflow:hidden;margin-top:4px}.bar>i{display:block;height:100%;background:var(--ac)}
+.app{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center}.acts{display:flex;gap:6px;flex-wrap:wrap}
+.up{color:var(--ok)}.down{color:var(--bad)}.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+<div id="login" class="card hide"><h1>Vyre</h1><p class="mut">Sign in</p>
+<form id="lf"><input id="pw" type="password" placeholder="Password" autocomplete="current-password"><p id="le" class="down"></p><button class="p">Sign in</button></form></div>
+
+<div id="app" class="hide">
+<header><h1>Vyre</h1><button id="out">Sign out</button></header>
+<div class="card" id="sys"></div>
+<div class="card"><b>New project</b>
+<form id="df" class="row" style="margin-top:8px">
+<input name="repo" placeholder="https://github.com/you/repo.git" required>
+<input name="name" placeholder="name (e.g. mysite)" required>
+<input name="domain" placeholder="domain (e.g. mysite.com)" required>
+<input name="port" placeholder="port (3000)" type="number">
+<input name="branch" placeholder="branch (main)">
+<button class="p">Deploy</button></form><p id="de" class="down"></p></div>
+<div id="apps"></div>
+<div id="detail" class="card hide"><div class="app"><b id="dt"></b><button id="dc">Close</button></div>
+<p class="mut">Environment variables (names only; one KEY=VALUE per line to set)</p>
+<p id="keys" class="mut"></p><textarea id="vars" rows="3" placeholder="KEY=value"></textarea>
+<p><button id="sv">Save (then redeploy)</button></p><pre id="log"></pre></div>
+</div>
+</main>
+<script>
+const $=s=>document.querySelector(s);let cur=null,timer=null;
+const api=async(p,o={})=>{const r=await fetch(p,{method:o.m||'GET',headers:{'Content-Type':'application/json'},body:o.b?JSON.stringify(o.b):undefined});
+ if(r.status===401&&p!=='/api/login'){show(false);throw 0}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Error');return j};
+const show=a=>{$('#login').classList.toggle('hide',a);$('#app').classList.toggle('hide',!a)};
+const gb=b=>(b/1073741824).toFixed(1)+' GB';
+const bar=(l,u,t)=>{const d=document.createElement('div');d.textContent=`${l}: ${gb(u)} / ${gb(t)}`;const b=document.createElement('div');b.className='bar';const i=document.createElement('i');i.style.width=Math.min(100,u/t*100||0)+'%';b.append(i);d.append(b);return d};
+async function sys(){const s=await api('/api/system');const e=$('#sys');e.replaceChildren(bar('Memory',s.memTotal-s.memAvailable,s.memTotal),bar('Disk',s.diskUsed,s.diskSize));const l=document.createElement('div');l.className='mut';l.textContent='Load: '+s.load.join(' ');e.append(l)}
+async function list(){const a=await api('/api/apps');const box=$('#apps');box.replaceChildren();
+ if(!a.length){const p=document.createElement('p');p.className='mut';p.textContent='No projects yet.';box.append(p)}
+ for(const x of a){const c=document.createElement('div');c.className='card app';const l=document.createElement('div');
+  const t=document.createElement('b');t.textContent=x.name+' ';const lk=document.createElement('a');lk.href='https://'+x.domain;lk.target='_blank';lk.rel='noopener';lk.textContent=x.domain;
+  const st=document.createElement('div');st.className=(x.status.startsWith('Up')?'up':'down');st.textContent=x.deploying?'deploying...':x.status;
+  l.append(t,lk,st);const acts=document.createElement('div');acts.className='acts';
+  const mk=(txt,f,cls)=>{const b=document.createElement('button');b.textContent=txt;if(cls)b.className=cls;b.onclick=f;return b};
+  acts.append(mk('Manage',()=>open(x.name)),mk('Redeploy',async()=>{await api(`/api/apps/${x.name}/redeploy`,{m:'POST'});open(x.name)}),
+   mk('Delete',async()=>{if(confirm(`Delete ${x.name}?`)){await api(`/api/apps/${x.name}`,{m:'DELETE'});list()}},'d'));
+  c.append(l,acts);box.append(c)}}
+async function open(n){cur=n;$('#detail').classList.remove('hide');$('#dt').textContent=n;
+ const k=await api(`/api/apps/${n}/env`);$('#keys').textContent=k.keys.length?k.keys.join(', '):'(none)';tick()}
+async function tick(){clearTimeout(timer);if(!cur)return;
+ const d=await api(`/api/apps/${cur}/deploy-log`);let text=d.text;
+ if(!text){text=(await api(`/api/apps/${cur}/logs`)).text}
+ const el=$('#log');el.textContent=text;el.scrollTop=el.scrollHeight;
+ if(d.running)timer=setTimeout(tick,2000);else list()}
+$('#dc').onclick=()=>{cur=null;$('#detail').classList.add('hide')};
+$('#sv').onclick=async()=>{try{await api(`/api/apps/${cur}/env`,{m:'POST',b:{vars:$('#vars').value}});$('#vars').value='';open(cur)}catch(e){alert(e.message)}};
+$('#df').onsubmit=async e=>{e.preventDefault();$('#de').textContent='';const f=Object.fromEntries(new FormData(e.target));
+ try{await api('/api/deploy',{m:'POST',b:f});e.target.reset();await list();open(f.name)}catch(x){$('#de').textContent=x.message}};
+$('#lf').onsubmit=async e=>{e.preventDefault();try{await api('/api/login',{m:'POST',b:{password:$('#pw').value}});$('#pw').value='';start()}catch(x){$('#le').textContent=x.message}};
+$('#out').onclick=async()=>{await api('/api/logout',{m:'POST'}).catch(()=>{});show(false)};
+async function start(){try{await sys();show(true);list();setInterval(()=>{sys().catch(()=>{});if(!cur)list().catch(()=>{})},15000)}catch{show(false)}}
+start();
+</script>
+</body>
+</html>

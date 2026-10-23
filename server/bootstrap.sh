@@ -34,6 +34,13 @@ if [ -d "$VYRE_HOME/.git" ]; then git -C "$VYRE_HOME" pull --ff-only; else git c
 ln -sf "$VYRE_HOME/bin/vyre" /usr/local/bin/vyre
 mkdir -p "$VYRE_HOME/apps"
 docker network inspect vyre >/dev/null 2>&1 || docker network create vyre
-docker compose -f "$VYRE_HOME/server/compose.yml" up -d
+[ -n "${DASH_DOMAIN:-}" ] || { echo "Set DASH_DOMAIN, e.g. DASH_DOMAIN=deploy.example.com bash bootstrap.sh" >&2; exit 1; }
+if [ ! -f "$VYRE_HOME/.env" ]; then
+  DASH_PASSWORD=$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 20)
+  printf 'DASH_DOMAIN=%s\nDASH_PASSWORD=%s\n' "$DASH_DOMAIN" "$DASH_PASSWORD" > "$VYRE_HOME/.env"
+  chmod 600 "$VYRE_HOME/.env"
+  echo "Dashboard password: $DASH_PASSWORD  (also in $VYRE_HOME/.env)"
+fi
+docker compose --env-file "$VYRE_HOME/.env" -f "$VYRE_HOME/server/compose.yml" up -d
 
-echo "Done. Point your domains' A records at this server's IP, then: vyre deploy <git-url> <name> <domain>"
+echo "Done. Point your domains' A records at this server's IP, then open https://$DASH_DOMAIN"
