@@ -27,7 +27,6 @@ paid in **USDC on VYRE (chain 3045)**, priced one third under Vercel, **free for
 - Running on their own domains: junkjunkiestexas.com, junkjunkiestomball.com, junkjunkiescypress.com, junkjunkiescollegestation.com, www.junkjunkiesflorida.com.
 - Waiting on the owner: junkjunkiesindiana.com DNS; each site's environment variables (database, storage token, PINs; copied from Vercel by the owner, never through chat); `ebay-for-junk`
   (private repo, needs a read-only GitHub token and a domain); repos for stagr-app (probably `stag`) and simplicitybuilds.com (probably `Web`).
-- The owner's Vercel account was overdue, so the old sites returned `402 DEPLOYMENT_DISABLED`. That is why the move was urgent.
 - **The billing code is NOT deployed on the server yet.** The server runs the commit before it. To deploy: on the server, `cd /opt/vyre && git pull`, set the values in section 7 in
   `/opt/vyre/.env`, then `docker compose --env-file .env -f server/compose.yml up -d --build`. The image build has not been run in the build environment (Docker Hub rate-limited it); expect to check it.
 
@@ -93,11 +92,11 @@ The database is `/opt/vyre/billing.db` (SQLite, next to the apps). **Back it up*
 
 ## 8. The owner's decisions (do not decide these for them)
 
-1. The receiving wallet (`PAY_TO`). The Chain notes name `0x7293…8392` as the gas and RPC-shop income wallet; whether hosting income goes there is not decided.
+1. The receiving wallet (`PAY_TO`). Which wallet hosting income goes to is not decided.
 2. Who may sign up (closed, invite, open), and whether strangers may run code on this server at all (see section 9).
 3. The prices, and whether any free allowance exists. Public copy must not say "cheapest"; a "third less than Vercel" claim needs a date and a source.
 4. Refund and unused-credit terms (the credit is a liability; there is no automatic refund), and what happens to unmatched payments.
-5. What to do about the Vercel bill and the photos in the old Vercel Blob stores (they stay on Vercel).
+5. What to do about the photos stored in the old Vercel Blob stores (they stay on Vercel).
 
 ## 9. Known gaps (be honest about these)
 
