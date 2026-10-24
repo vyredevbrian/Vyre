@@ -29,7 +29,7 @@ vyre logs mysite -f
 
 Several domains: give a comma-separated list. The first is the main address and the others redirect to it, for example `vyre deploy <repo> site example.com,www.example.com` serves `example.com` and sends `www` there. Point every domain's DNS at the server before deploying, so the HTTPS certificates can be issued straight away.
 
-Private repos: use an HTTPS URL with a GitHub token (`https://<token>@github.com/you/repo.git`) or add a deploy key on the server.
+Private repos: create a fine-grained GitHub token with read-only access to just those repos (Contents: Read), add `GITHUB_TOKEN=...` to `/opt/vyre/.env` on the server, and rebuild the dashboard (`docker compose --env-file .env -f server/compose.yml up -d --build`). `vyre` then uses it for GitHub clones and never stores it in the app's settings.
 
 ## Not built yet (next steps)
 

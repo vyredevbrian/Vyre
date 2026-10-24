@@ -17,6 +17,11 @@ USAGE
   exit 1
 }
 
+# git with an optional read-only GitHub token (GITHUB_TOKEN in /opt/vyre/.env) so private repos can be cloned; the token is never written to app.conf.
+gitx() {
+  if [ -n "${GITHUB_TOKEN:-}" ]; then git -c "http.https://github.com/.extraHeader=Authorization: Basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)" "$@"; else git "$@"; fi
+}
+
 meta() { grep -E "^$2=" "$APPS/$1/app.conf" | head -1 | cut -d= -f2- || true; }
 
 # A prebuilt site (static files and/or Vercel-style api/*.js functions, no build step) runs on the Vercel-compatible runtime.
@@ -72,10 +77,10 @@ build_and_run() {
   exec 9>"$APPS/../.build.lock"; flock 9
 
   if [ -d "$dir/src/.git" ]; then
-    git -C "$dir/src" fetch --depth 1 origin "$branch"
+    gitx -C "$dir/src" fetch --depth 1 origin "$branch"
     git -C "$dir/src" reset --hard "origin/$branch"
   else
-    git clone --depth 1 --branch "$branch" "$(meta "$name" REPO)" "$dir/src"
+    gitx clone --depth 1 --branch "$branch" "$(meta "$name" REPO)" "$dir/src"
   fi
 
   tag="vyre/$name:$(git -C "$dir/src" rev-parse --short HEAD)-$(date +%s)"
