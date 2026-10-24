@@ -336,7 +336,8 @@ function serveAsset(res, pathname) {
   fs.createReadStream(file).pipe(res);
 }
 
-const oauth = MCP_TOKEN ? require('./oauth')({ secret: SECRET, baseUrl: DASH_DOMAIN ? `https://${DASH_DOMAIN}` : '', tryPassword }) : null;
+const oauth = MCP_TOKEN ? require('./oauth')({ secret: SECRET, baseUrl: DASH_DOMAIN ? `https://${DASH_DOMAIN}` : '', tryPassword,
+  extraRedirects: (process.env.OAUTH_EXTRA_REDIRECTS || '').split(',').map((x) => x.trim()).filter((x) => /^https:\/\/\S+$/.test(x)) }) : null;
 const mcp = require('./mcp')(core, MCP_TOKEN, oauth);
 
 http.createServer(async (req, res) => {

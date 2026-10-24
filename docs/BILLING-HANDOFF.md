@@ -18,7 +18,7 @@ paid in **USDC on VYRE (chain 3045)**, priced one third under Vercel, **free for
   - `server.js`: accounts and sessions, signup and login with limits, per-account app scoping, billing and admin endpoints, charging, customer safety rules.
   - `public/index.html`: login and signup, billing card with top-up instructions, owner admin card.
   - `oauth.js` and `mcp.js`: the owner's MCP connector (unchanged; owner level only).
-- Tests: `node --no-warnings --test dashboard/test/billing.test.js dashboard/test/server.test.js` (26 tests, all pass). Do not run `node --test dashboard/test/` (the folder form fails on this Node).
+- Tests: `node --no-warnings --test dashboard/test/billing.test.js dashboard/test/server.test.js` (27 tests, all pass). Do not run `node --test dashboard/test/` (the folder form fails on this Node).
 - Related: `bin/vyre` (deploy tool), `runtime/vercel/` (Vercel-style functions runtime), `server/compose.yml` (all settings), `docs/FEATURES.md` (checklist).
 
 ## 3. Live state (not secret)
@@ -66,7 +66,7 @@ accepted only if its A record already points at this server (that is the proof i
 token**: the token is the owner's and could read the owner's private repos); builds stop after 30 minutes; at most `CUSTOMER_MAX_APPS` (3) apps each; invite codes are used up atomically with the account;
 unknown emails cost the same time as wrong passwords; the owner account cannot be reached by email login; endpoints for the owner (`/api/admin/*`, `/api/system`, `/api/usage`) answer 403 to customers.
 
-Checked: 26 tests, including a fake VYRE chain, a stand-in for the deploy tool, and these cheating cases: replaying a transaction, paying one wei or one micro-USDC off, paying the right amount to the wrong
+Checked: 27 tests, including a fake VYRE chain, a stand-in for the deploy tool, and these cheating cases: replaying a transaction, paying one wei or one micro-USDC off, paying the right amount to the wrong
 wallet, a failed transfer, a block that is too new, a block with no timestamp, history from before switch-on, a wrong chain, a bad RPC answer, an expired invoice, a customer reaching another's app (logs, env, redeploy,
 delete), taking another's app name, leaking secrets into a build, the reserved and unresolved domains, the app limit, old apps with no owner, the owner being charged. **Mutation check:** 12 deliberate breaks of
 the code (6 in the money and chain logic, 6 in the server rules) were each caught by a failing test.
@@ -147,3 +147,25 @@ That means nobody has used it; **whether the owner holds its key was not verifie
 4. Rehearse with real money, small: owner view, "New invite code"; sign up a test customer with it; "Add credit" for 1 USDC; send exactly the shown amount from a different wallet; within about a minute the balance appears; deploy a tiny test site and check the charge and the ledger;
    send a deliberately wrong amount and check it shows under unmatched and is not credited. The `billing_overview` tool on the MCP connector shows the same information without the dashboard.
 5. Then set `MIN_TOPUP_USDC` back to 5 (or the owner's choice). Keep signups invite-only until a security review and written terms exist.
+
+## 14. Still to test (nothing below has been done)
+
+- **A real payment.** Everything so far used a fake chain. The owner's receiving wallet is set on the server, billing is running (`/api/config` shows payments on, signups closed), but no real USDC has moved through it.
+  Do the go-live rehearsal in section 13: prove the wallet's key is held, make a test customer, pay the exact invoice amount, then a wrong amount (must not be credited), then a small build and its charge.
+- **A rehearsal on testnet 7357** if the owner wants one before mainnet money (`CHAIN_RPC`, `CHAIN_ID`).
+- **Timing.** The watcher trusts a block 15 seconds after it was made (`CONFIRM_SECONDS`). Measure how long a real payment takes to show up, and decide whether larger top-ups should wait longer.
+- **The dashboard image** was rebuilt on the server on 2026-10-24 and runs; the SQLite database file (`/opt/vyre/billing.db`) is created on first start. Confirm it exists and is backed up.
+- **Real customer builds** on this server: only a stand-in for the deploy tool was used in the tests. The owner's own sites deploy fine, but a customer deploy (bare environment, domain rules, charging) has not been run end to end for real.
+- **Outside security review** before any stranger signs up (section 9).
+
+## 15. The MCP connector: where it stands, and other AI apps
+
+- It is at `https://deploy.vyrechain.com/mcp` (Streamable HTTP, stateless JSON). Tools: `system_status`, `list_apps`, `billing_overview` (read-only), `deploy_app`, `redeploy_app`, `get_deploy_log`, `get_app_logs`, `list_env_keys`, `set_env`, `delete_app` (needs `confirm` = app name). Env values are never returned.
+- **Where it is added:** only as a custom connector in the owner's own Claude account (it signs in with the dashboard password through OAuth). It is **not published in any directory**, and **no other AI app has it yet.** (An already-open Claude session caches the tool list; reconnecting the connector shows newer tools such as `billing_overview`.)
+- **To add it to other AI apps** (for example ChatGPT, Cursor or any app that supports remote MCP servers): two ways in.
+  1. **Fixed token.** Apps that let you set a header can use `Authorization: Bearer <MCP_TOKEN>` (the token is in `/opt/vyre/.env`, never in the repo or in chat).
+  2. **Sign-in (OAuth).** The server speaks OAuth 2.1 with discovery, dynamic client registration and PKCE (S256), and the sign-in page asks for the dashboard password. For safety it only sends users back to Claude, localhost, and
+     addresses the owner lists exactly in `OAUTH_EXTRA_REDIRECTS` (comma-separated `https://` callback addresses, set in `/opt/vyre/.env`, then rebuild the dashboard). **Read each app's own documentation for its exact callback address; it was not looked up here, and
+     guessing one would either fail or open a hole.** After setting it, the app can register and connect.
+  Either way the connection has full owner power over the server (deploy, delete, env names). Treat the token and the password like keys; changing the dashboard password signs every OAuth connection out.
+- Anyone who writes the other AI apps' setup instructions should say which of the two ways is used, and that these tools can deploy and delete.

@@ -6,7 +6,8 @@ const crypto = require('crypto');
 const b64u = (s) => Buffer.from(s).toString('base64url');
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function allowedRedirect(u) {
+function allowedRedirect(u, extra = []) {
+  if (extra.includes(u)) return true; // exact addresses the owner added for other AI apps (OAUTH_EXTRA_REDIRECTS)
   try {
     const x = new URL(u);
     if (x.hash) return false;
@@ -16,7 +17,7 @@ function allowedRedirect(u) {
   } catch { return false; }
 }
 
-module.exports = ({ secret, baseUrl, tryPassword }) => {
+module.exports = ({ secret, baseUrl, tryPassword, extraRedirects = [] }) => {
   const key = crypto.createHash('sha256').update('oauth:' + secret).digest();
   const sign = (s) => crypto.createHmac('sha256', key).update(s).digest('base64url');
   const pack = (o) => { const p = b64u(JSON.stringify(o)); return p + '.' + sign(p); };
@@ -100,7 +101,7 @@ ${error ? `<p class="err">${esc(error)}</p>` : ''}<button>Allow</button></form><
       if (path === '/oauth/register' && req.method === 'POST') {
         let b; try { b = await readForm(req); } catch { json(res, 400, { error: 'invalid_client_metadata' }); return true; }
         const uris = b.redirect_uris;
-        if (!Array.isArray(uris) || !uris.length || uris.length > 5 || !uris.every((u) => typeof u === 'string' && allowedRedirect(u))) {
+        if (!Array.isArray(uris) || !uris.length || uris.length > 5 || !uris.every((u) => typeof u === 'string' && allowedRedirect(u, extraRedirects))) {
           json(res, 400, { error: 'invalid_redirect_uri', error_description: 'Only Claude and localhost callbacks are allowed' }); return true;
         }
         json(res, 201, { client_id: pack({ t: 'client', r: uris }), client_id_issued_at: Math.floor(Date.now() / 1000), redirect_uris: uris,

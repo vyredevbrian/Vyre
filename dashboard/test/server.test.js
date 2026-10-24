@@ -59,7 +59,7 @@ test.before(async () => {
     env: { PATH: process.env.PATH, NODE_ENV: 'test', PORT: String(port), DASH_PASSWORD: 'ownerpw-123', MCP_TOKEN: 'mcp-test-token', VYRE_APPS: APPS, VYRE_BIN: stub, VYRE_DB: path.join(tmp, 'b.db'), VYRE_USAGE: path.join(tmp, 'u.jsonl'),
       SIGNUPS: 'invite', PAY_TO: PAY, CHAIN_RPC: `http://127.0.0.1:${rpc.address().port}`, CHAIN_ID: '3045', CONFIRM_SECONDS: '1', WATCH_MS: '150', SERVER_IP: '1.2.3.4',
       APPS_DOMAIN: 'apps.example.com', DASH_DOMAIN: 'deploy.example.com', RESERVED_ZONES: 'vyrechain.com', CUSTOMER_MAX_APPS: '2', PRICE_BUILD_PER_MIN_USDC: '0.6', MIN_TOPUP_USDC: '1',
-      DNS_MOCK: JSON.stringify({ 'mine.com': ['1.2.3.4'], 'www.mine.com': ['1.2.3.4'], 'other.com': ['9.9.9.9'] }), GITHUB_TOKEN: 'ghp_owner_secret_token' },
+      DNS_MOCK: JSON.stringify({ 'mine.com': ['1.2.3.4'], 'www.mine.com': ['1.2.3.4'], 'other.com': ['9.9.9.9'] }), GITHUB_TOKEN: 'ghp_owner_secret_token', OAUTH_EXTRA_REDIRECTS: 'https://otherai.example/oauth/callback, http://not-https.example/cb' },
   });
   server.stderr.on('data', (d) => process.stderr.write(d));
   base = `http://127.0.0.1:${port}`;
@@ -230,4 +230,18 @@ test('the MCP connector exposes a read-only billing overview, and only with the 
   const r = await (await call('mcp-test-token')).json(); const o = JSON.parse(r.result.content[0].text);
   assert.ok(Array.isArray(o.accounts) && o.accounts.some((a) => a.role === 'owner'));
   assert.equal(o.chain.payTo, PAY); assert.ok(o.creditSold && o.creditOwed); assert.ok(!JSON.stringify(o).includes('pw'));
+});
+
+test('connector sign-in only sends users back to Claude, localhost, or addresses the owner listed exactly', async () => {
+  const reg = async (uri) => (await fetch(base + '/oauth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ redirect_uris: [uri], client_name: 't' }) })).status;
+  assert.equal(await reg('https://claude.ai/api/mcp/auth_callback'), 201);
+  assert.equal(await reg('http://localhost:8123/callback'), 201);
+  assert.equal(await reg('https://otherai.example/oauth/callback'), 201);       // listed by the owner
+  assert.equal(await reg('https://otherai.example/oauth/callback/'), 400);      // near miss
+  assert.equal(await reg('https://otherai.example/other'), 400);
+  assert.equal(await reg('https://evil.example/cb'), 400);
+  assert.equal(await reg('http://not-https.example/cb'), 400);                  // an owner entry that is not https is ignored
+  assert.equal(await reg('https://claude.ai.evil.example/x'), 400);
+  const meta = await (await fetch(base + '/.well-known/oauth-authorization-server')).json();
+  assert.deepEqual(meta.code_challenge_methods_supported, ['S256']);
 });
