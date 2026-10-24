@@ -70,6 +70,8 @@ const ipOf = (req) => String(req.headers['x-forwarded-for'] || req.socket.remote
 
 const USAGE = process.env.VYRE_USAGE || path.join(path.dirname(APPS), 'usage.jsonl');
 const deployLogs = new Map(); // name -> { running, text }
+const pendingAuto = new Set(); // apps with a push waiting behind a build that is already running
+const seenDeliveries = new Set(); // GitHub delivery ids already handled (GitHub retries)
 
 const send = (res, code, body, headers = {}) => {
   const isStr = typeof body === 'string';
@@ -115,8 +117,56 @@ function startJob(name, args, acct) {
       }
       fs.appendFile(USAGE, JSON.stringify({ app: name, account: isOwner(acct) ? owner.id : acct.id, kind: args[0], seconds, ok: code === 0, at: new Date().toISOString() }) + '\n', () => {});
     }
+    if (pendingAuto.delete(name)) setImmediate(() => autoDeploy(name, acct)); // a push arrived during this build: build the latest once
   });
   return true;
+}
+
+// ---- auto-deploy from GitHub pushes ----
+const repoKey = (url) => { const m = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(String(url)); return m ? `${m[1]}/${m[2]}`.toLowerCase() : null; };
+const ownedBy = (a, name) => { const o = billing.ownerOf(name); return o === a.id || (o === null && a.role === 'owner'); };
+function note(name, text) { const j = deployLogs.get(name); if (!j || !j.running) deployLogs.set(name, { running: false, ok: false, text: `[auto-deploy] ${new Date().toISOString()} ${text}\n` }); }
+// Returns 'started', 'queued' (one more build runs when the current one ends) or 'skipped' (a customer without enough credit).
+function autoDeploy(name, acct) {
+  if (!isOwner(acct) && !billing.canBuild(acct)) { note(name, `skipped: add credit to build (at least ${Billing.fmt(billing.minToBuild())} USDC)`); return 'skipped'; }
+  const j = deployLogs.get(name);
+  if (j && j.running) { pendingAuto.add(name); return 'queued'; }
+  return startJob(name, ['redeploy', name], acct) ? 'started' : 'queued';
+}
+const readRaw = (req, limit) => new Promise((resolve, reject) => {
+  const chunks = []; let n = 0, big = false;
+  req.on('data', (c) => { n += c.length; if (n > limit) big = true; else if (!big) chunks.push(c); });
+  req.on('end', () => (big ? reject(Object.assign(new Error('too large'), { status: 413 })) : resolve(Buffer.concat(chunks))));
+  req.on('error', reject);
+});
+async function githubHook(req, res, id) {
+  if (req.method !== 'POST') return send(res, 405, { error: 'POST only' });
+  const k = `h:${ipOf(req)}`;
+  if (blocked(k)) return send(res, 429, { error: 'Too many bad requests' });
+  const hook = /^[0-9a-f]{24}$/.test(id) ? billing.hookById(id) : null;
+  let raw; try { raw = await readRaw(req, 10 * 1024 * 1024); } catch (e) { return send(res, e.status || 400, { error: 'Body too large' }); }
+  const sig = String(req.headers['x-hub-signature-256'] || '');
+  const want = hook ? 'sha256=' + crypto.createHmac('sha256', hook.secret).update(raw).digest('hex') : '';
+  if (!hook || !/^sha256=[0-9a-f]{64}$/.test(sig) || !safeEq(sig, want)) { failed(k); return send(res, hook ? 401 : 404, { error: hook ? 'Bad signature' : 'Unknown hook' }); }
+  const event = req.headers['x-github-event'];
+  if (event === 'ping') return send(res, 200, { ok: true, repo: hook.repo });
+  if (event !== 'push') return send(res, 200, { ignored: `event ${event}` });
+  let p; try { p = JSON.parse(raw.toString('utf8')); } catch { return send(res, 400, { error: 'Bad payload' }); }
+  const delivery = String(req.headers['x-github-delivery'] || '');
+  if (delivery) { if (seenDeliveries.has(delivery)) return send(res, 200, { ignored: 'already handled' }); seenDeliveries.add(delivery); if (seenDeliveries.size > 500) seenDeliveries.delete(seenDeliveries.values().next().value); }
+  const repo = String(p.repository && p.repository.full_name || '').toLowerCase(), ref = String(p.ref || '');
+  if (repo !== hook.repo) return send(res, 200, { ignored: 'a different repository' });
+  const m = /^refs\/heads\/(.+)$/.exec(ref);
+  if (!m || p.deleted) return send(res, 200, { ignored: 'not a branch update' });
+  const acct = billing.account(hook.account);
+  const result = { deploying: [], queued: [], skipped: [] };
+  for (const name of appNames()) {
+    const c = meta(name);
+    if (repoKey(c.REPO) !== hook.repo || c.BRANCH !== m[1] || !ownedBy(acct, name)) continue;
+    const r = autoDeploy(name, acct);
+    (r === 'started' ? result.deploying : r === 'queued' ? result.queued : result.skipped).push(name);
+  }
+  return send(res, 202, result);
 }
 
 async function listApps(acct) {
@@ -305,7 +355,7 @@ async function api(req, res, url) {
     return send(res, 202, { ok: true });
   }
 
-  const m = /^\/api\/apps\/([a-z0-9-]+)(?:\/(redeploy|env|logs|deploy-log))?$/.exec(url.pathname);
+  const m = /^\/api\/apps\/([a-z0-9-]+)(?:\/(redeploy|env|logs|deploy-log|hook|hook\/rotate))?$/.exec(url.pathname);
   if (m && NAME_RE.test(m[1]) && meta(m[1]) && canSee(acct, m[1])) {
     const name = m[1], action = m[2];
     if (!action && req.method === 'DELETE') { const r = await run('bash', [VYRE, 'rm', name]); if (r.ok) billing.removeOwner(name); deployLogs.delete(name); return send(res, r.ok ? 200 : 500, { ok: r.ok, out: r.out }); }
@@ -315,6 +365,16 @@ async function api(req, res, url) {
     }
     if (action === 'deploy-log') { const j = deployLogs.get(name); return send(res, 200, { running: !!(j && j.running), text: j ? j.text : '' }); }
     if (action === 'logs') { const r = await run('docker', ['logs', '--tail', '300', `vyre-${name}`]); return send(res, 200, { text: r.out }); }
+    if (action === 'hook' || action === 'hook/rotate') {
+      const key = repoKey(meta(name).REPO);
+      if (!key) return send(res, 400, { error: 'Auto-deploy needs a repo on github.com' });
+      const holder = billing.ownerOf(name) ?? owner.id; // the account the app belongs to (older apps belong to the owner)
+      const h = billing.hookFor(holder, key);
+      if (action === 'hook/rotate') { if (req.method !== 'POST') return send(res, 405, { error: 'POST only' }); h.secret = billing.rotateHook(h.id); }
+      const base = DASH_DOMAIN ? `https://${DASH_DOMAIN}` : `https://${req.headers.host}`;
+      return send(res, 200, { repo: key, url: `${base}/hooks/github/${h.id}`, secret: h.secret, branch: meta(name).BRANCH,
+        apps: appNames().filter((n) => repoKey(meta(n).REPO) === key && ownedBy(billing.account(holder), n)) });
+    }
     if (action === 'env') {
       if (req.method === 'GET') return send(res, 200, { keys: readEnvKeys(name) });
       if (req.method === 'POST') {
@@ -344,6 +404,8 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
     if (oauth && (url.pathname.startsWith('/.well-known/oauth-') || url.pathname.startsWith('/oauth/')) && await oauth.handle(req, res, url)) return;
+    const hm = /^\/hooks\/github\/([^/]+)$/.exec(url.pathname);
+    if (hm) return await githubHook(req, res, hm[1]);
     if (url.pathname === '/mcp') return await mcp.handle(req, res, readBody);
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
     if (url.pathname.startsWith('/assets/')) return serveAsset(res, url.pathname);

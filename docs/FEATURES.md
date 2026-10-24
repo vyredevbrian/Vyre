@@ -11,7 +11,7 @@ Tier 1 = needed before moving the real sites. Tier 2 = makes it a product. Tier 
 | --- | --- | --- | --- |
 | Deploy from a git repo | [x] manual, from the dashboard, CLI or MCP | 1 | |
 | Run Vercel-style `api/*.js` functions, `vercel.json` rewrites/redirects/headers and crons | [~] built (`runtime/vercel`), tested locally on the real Spring site and a fixture; not yet run in the server's container | 1 | `vyre deploy ... --root dist/spring` picks it automatically for prebuilt sites. Neon and Vercel Blob packages load; real credentials still to be tested on the server |
-| Auto-deploy on `git push` | [ ] | 1 | GitHub webhook receiver; verify signature; branch `main` to production |
+| Auto-deploy on `git push` | [x] built and tested (signed GitHub webhooks, one per repo and account, USDC-gated for customers) | 1 | Not yet set up on GitHub for the live sites; preview deployments per branch still not built |
 | Deployment history (commit message, SHA, branch, duration, status, time) | [ ] only the latest build log is kept | 1 | Store one record per deploy; list with filters |
 | Build logs per deployment | [~] latest only, in memory | 1 | Persist to disk with the history |
 | Rollback / promote | [ ] | 1 | Keep the last N images; "make this live" re-runs the container from an old image |

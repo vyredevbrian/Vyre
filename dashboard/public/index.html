@@ -84,7 +84,7 @@ pre{margin:12px 0 0;background:var(--bg);border:1px solid var(--line);border-rad
 <div id="detail" class="card hide"><div class="app"><h2 id="dt" style="margin:0"></h2><button id="dc">Close</button></div>
 <p class="mut">Environment variables (names only; one KEY=VALUE per line to set)</p>
 <p id="keys" class="mut"></p><textarea id="vars" rows="3" placeholder="KEY=value"></textarea>
-<p><button id="sv">Save (then redeploy)</button></p><pre id="log"></pre></div>
+<p><button id="sv">Save (then redeploy)</button></p><div id="hk" style="margin-top:6px"></div><pre id="log"></pre></div>
 <div class="card hide" id="admin"></div>
 </div>
 </main>
@@ -109,7 +109,14 @@ async function list(){const a=await api('/api/apps'),box=$('#apps');box.replaceC
   acts.append(mk('Manage',()=>open(x.name)),mk('Redeploy',async()=>{try{await api(`/api/apps/${x.name}/redeploy`,{m:'POST'});open(x.name)}catch(e){alert(e.message)}}),
    mk('Delete',async()=>{if(confirm(`Delete ${x.name}?`)){await api(`/api/apps/${x.name}`,{m:'DELETE'});list()}},'d'));
   c.append(l,acts);box.append(c)}}
-async function open(n){cur=n;$('#detail').classList.remove('hide');$('#dt').textContent=n;
+function hookReset(){const b=el('button','','Auto-deploy from GitHub');b.type='button';b.onclick=()=>hook();$('#hk').replaceChildren(b)}
+async function hook(rotate){const box=$('#hk');try{const h=await api(`/api/apps/${cur}/hook${rotate===true?'/rotate':''}`,{m:rotate===true?'POST':'GET'});
+ box.replaceChildren();const d=el('div','box');
+ d.append(el('p','','Every push to the '+h.branch+' branch of github.com/'+h.repo+' rebuilds: '+(h.apps.join(', ')||'(no apps)')+'. In GitHub open the repo, then Settings, Webhooks, Add webhook, and enter:'));
+ const kv=el('div','kv');kv.append(el('b','','Payload URL'),el('span','code',h.url),el('b','','Content type'),el('span','','application/json'),el('b','','Secret'),el('span','code',h.secret),el('b','','Events'),el('span','','Just the push event'));d.append(kv);
+ d.append(el('p','mut','Customer accounts pay for each build. A push is skipped, and noted in the log, when credit is too low. The secret proves a push came from GitHub: keep it private.'));
+ const r=el('button','','New secret');r.type='button';r.onclick=()=>{if(confirm('Replace the secret? The old one stops working, so update it in GitHub.'))hook(true)};d.append(r);box.append(d)}catch(e){box.replaceChildren(el('p','down',e.message))}}
+async function open(n){cur=n;hookReset();$('#detail').classList.remove('hide');$('#dt').textContent=n;
  const k=await api(`/api/apps/${n}/env`);$('#keys').textContent=k.keys.length?k.keys.join(', '):'(none)';tick()}
 async function tick(){clearTimeout(timer);if(!cur)return;
  const d=await api(`/api/apps/${cur}/deploy-log`);let text=d.text;if(!text)text=(await api(`/api/apps/${cur}/logs`)).text;

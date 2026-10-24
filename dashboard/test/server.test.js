@@ -245,3 +245,105 @@ test('connector sign-in only sends users back to Claude, localhost, or addresses
   const meta = await (await fetch(base + '/.well-known/oauth-authorization-server')).json();
   assert.deepEqual(meta.code_challenge_methods_supported, ['S256']);
 });
+
+// ---- auto-deploy from GitHub pushes ----
+const crypto = require('crypto');
+const { DatabaseSync } = require('node:sqlite');
+const hmac = (secret, body) => 'sha256=' + crypto.createHmac('sha256', secret).update(body).digest('hex');
+let delivery = 0;
+const hookCall = async (url, secret, payload, { event = 'push', sig, raw } = {}) => {
+  const body = raw ?? JSON.stringify(payload);
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-GitHub-Event': event, 'X-GitHub-Delivery': 'd' + (++delivery), 'X-Hub-Signature-256': sig ?? hmac(secret, body), 'X-Forwarded-For': `10.9.${Math.floor(delivery / 250)}.${delivery % 250}` }, body });
+  let json = null; try { json = await r.json(); } catch {}
+  return { status: r.status, json };
+};
+const push = (repo, ref = 'refs/heads/main', extra = {}) => ({ ref, repository: { full_name: repo }, ...extra });
+const redeploys = (app) => fs.readFileSync(path.join(tmp, 'u.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.app === app && r.kind === 'redeploy').length;
+const idle = async (c, name) => until(async () => { const r = await c.get(`/api/apps/${name}/deploy-log`); return r.json && r.json.running === false ? r.json : null; }, 20000);
+const setBalance = (email, nano) => { const raw = new DatabaseSync(path.join(tmp, 'b.db')); raw.exec('PRAGMA busy_timeout=5000'); raw.prepare('UPDATE accounts SET balance_nano = ? WHERE email = ?').run(nano, email); raw.close(); };
+
+test('auto-deploy: a signed push redeploys every matching app of the account, and nothing else', async () => {
+  const o = await owner();
+  for (const [n, d] of [['hk-a', 'hk-a.example.net'], ['hk-b', 'hk-b.example.net']]) { assert.equal((await o.post('/api/deploy', { repo: 'https://github.com/Acme/Site.git', name: n, domain: d })).status, 202); await waitJob(o, n); }
+  assert.equal((await o.post('/api/deploy', { repo: 'https://github.com/acme/other.git', name: 'hk-c', domain: 'hk-c.example.net' })).status, 202); await waitJob(o, 'hk-c');
+  const h = (await o.get('/api/apps/hk-a/hook')).json;
+  assert.equal(h.repo, 'acme/site'); assert.deepEqual(h.apps.sort(), ['hk-a', 'hk-b']); assert.match(h.url, /^https:\/\/deploy\.example\.com\/hooks\/github\/[0-9a-f]{24}$/); assert.match(h.secret, /^[0-9a-f]{64}$/);
+  assert.deepEqual((await o.get('/api/apps/hk-b/hook')).json.url, h.url); // one hook per repository, shared by its apps
+  const url = base + new URL(h.url).pathname;
+  assert.equal((await hookCall(url, h.secret, { zen: 'x' }, { event: 'ping' })).status, 200);
+  const r = await hookCall(url, h.secret, push('Acme/Site'));
+  assert.equal(r.status, 202); assert.deepEqual(r.json.deploying.sort(), ['hk-a', 'hk-b']);
+  await idle(o, 'hk-a'); await idle(o, 'hk-b');
+  assert.equal(redeploys('hk-a'), 1); assert.equal(redeploys('hk-b'), 1); assert.equal(redeploys('hk-c'), 0);
+});
+
+test('auto-deploy: bad or missing signatures, unknown hooks and other events do nothing', async () => {
+  const o = await owner(); const h = (await o.get('/api/apps/hk-a/hook')).json; const url = base + new URL(h.url).pathname;
+  const before = redeploys('hk-a');
+  assert.equal((await hookCall(url, 'wrong-secret', push('acme/site'))).status, 401);
+  assert.equal((await hookCall(url, h.secret, push('acme/site'), { sig: 'sha256=' + 'a'.repeat(64) })).status, 401);
+  assert.equal((await hookCall(url, h.secret, push('acme/site'), { sig: 'nonsense' })).status, 401);
+  assert.equal((await hookCall(url, h.secret, push('acme/site'), { sig: hmac(h.secret, 'different body') })).status, 401);
+  assert.equal((await hookCall(base + '/hooks/github/' + '0'.repeat(24), h.secret, push('acme/site'))).status, 404);
+  assert.equal((await hookCall(base + '/hooks/github/not-an-id', h.secret, push('acme/site'))).status, 404);
+  assert.equal((await fetch(url, { method: 'GET' })).status, 405);
+  assert.deepEqual((await hookCall(url, h.secret, push('acme/site'), { event: 'issues' })).json, { ignored: 'event issues' });
+  assert.deepEqual((await hookCall(url, h.secret, push('acme/site', 'refs/tags/v1'))).json, { ignored: 'not a branch update' });
+  assert.deepEqual((await hookCall(url, h.secret, push('acme/site', 'refs/heads/main', { deleted: true }))).json, { ignored: 'not a branch update' });
+  assert.deepEqual((await hookCall(url, h.secret, push('acme/someone-elses-repo'))).json, { ignored: 'a different repository' });
+  const other = await hookCall(url, h.secret, push('acme/site', 'refs/heads/feature-x')); assert.equal(other.status, 202); assert.deepEqual(other.json, { deploying: [], queued: [], skipped: [] });
+  assert.equal((await hookCall(url, h.secret, null, { raw: '{not json' })).status, 400);
+  await sleep(500); assert.equal(redeploys('hk-a'), before);
+  // the same delivery twice (a GitHub retry) runs once
+  const body = JSON.stringify(push('acme/site')), headers = { 'Content-Type': 'application/json', 'X-GitHub-Event': 'push', 'X-GitHub-Delivery': 'same-delivery', 'X-Hub-Signature-256': hmac(h.secret, body), 'X-Forwarded-For': '10.8.0.1' };
+  assert.equal((await fetch(url, { method: 'POST', headers, body })).status, 202);
+  assert.deepEqual(await (await fetch(url, { method: 'POST', headers, body })).json(), { ignored: 'already handled' });
+  await idle(o, 'hk-a'); await idle(o, 'hk-b'); assert.equal(redeploys('hk-a'), before + 1);
+});
+
+test('auto-deploy: pushes that arrive during a build wait and run once, not once each', async () => {
+  const o = await owner(); const h = (await o.get('/api/apps/hk-a/hook')).json; const url = base + new URL(h.url).pathname;
+  await idle(o, 'hk-a'); await idle(o, 'hk-b'); const before = redeploys('hk-a');
+  const rs = []; for (let i = 0; i < 4; i++) rs.push((await hookCall(url, h.secret, push('acme/site'))).json);
+  assert.deepEqual(rs[0].deploying.sort(), ['hk-a', 'hk-b']); for (const r of rs.slice(1)) assert.deepEqual(r.queued.sort(), ['hk-a', 'hk-b']);
+  await sleep(600); await until(async () => redeploys('hk-a') === before + 2, 20000); await sleep(2500); await idle(o, 'hk-a');
+  assert.equal(redeploys('hk-a'), before + 2); // the build that was running, plus one for all the pushes behind it
+});
+
+test('auto-deploy: a customer without credit is skipped and told so; with credit it builds and is charged; accounts never cross', async () => {
+  const o = await owner(), c = await signup('hook-cust@x.com', await invite(o));
+  assert.equal((await o.post('/api/admin/credit', { email: 'hook-cust@x.com', usdc: '10' })).status, 200);
+  assert.equal((await c.post('/api/deploy', { repo: 'https://github.com/acme/site.git', name: 'hk-cust', domain: 'hk-cust.apps.example.com' })).status, 202); await waitJob(c, 'hk-cust');
+  assert.equal((await c.get('/api/apps/hk-a/hook')).status, 404);                  // not theirs
+  const h = (await c.get('/api/apps/hk-cust/hook')).json; const url = base + new URL(h.url).pathname;
+  assert.deepEqual(h.apps, ['hk-cust']);                                          // the owner's apps from the same repo are not in the customer's hook
+  const ownerHook = (await o.get('/api/apps/hk-a/hook')).json; assert.notEqual(ownerHook.url, h.url);
+  setBalance('hook-cust@x.com', 1_000_000_000n);                                  // 1 USDC: below the five build minutes needed
+  const beforeCust = redeploys('hk-cust'), beforeOwner = redeploys('hk-a');
+  const r = await hookCall(url, h.secret, push('acme/site'));
+  assert.deepEqual(r.json, { deploying: [], queued: [], skipped: ['hk-cust'] });
+  assert.match((await c.get('/api/apps/hk-cust/deploy-log')).json.text, /skipped: add credit/);
+  await sleep(500); assert.equal(redeploys('hk-cust'), beforeCust); assert.equal(redeploys('hk-a'), beforeOwner);
+  setBalance('hook-cust@x.com', 10_000_000_000n);
+  const r2 = await hookCall(url, h.secret, push('acme/site')); assert.deepEqual(r2.json.deploying, ['hk-cust']);
+  await idle(c, 'hk-cust'); assert.equal(redeploys('hk-cust'), beforeCust + 1); assert.equal(redeploys('hk-a'), beforeOwner);
+  const ledger = (await c.get('/api/billing')).json.ledger; assert.ok(ledger.some((l) => l.kind === 'build' && /redeploy hk-cust/.test(l.note)));
+  // the owner's push does not touch the customer's app
+  const bc = redeploys('hk-cust'); await hookCall(base + new URL(ownerHook.url).pathname, ownerHook.secret, push('acme/site')); await idle(o, 'hk-a');
+  assert.equal(redeploys('hk-cust'), bc);
+});
+
+test('auto-deploy: rotating the secret cuts off the old one; oversized and repeated bad requests are refused', async () => {
+  const o = await owner(); const h = (await o.get('/api/apps/hk-c/hook')).json; const url = base + new URL(h.url).pathname;
+  assert.equal((await hookCall(url, h.secret, { zen: 1 }, { event: 'ping' })).status, 200);
+  const h2 = (await o.post('/api/apps/hk-c/hook/rotate')).json; assert.notEqual(h2.secret, h.secret); assert.equal(h2.url, h.url);
+  assert.equal((await hookCall(url, h.secret, { zen: 1 }, { event: 'ping' })).status, 401);
+  assert.equal((await hookCall(url, h2.secret, { zen: 1 }, { event: 'ping' })).status, 200);
+  assert.equal((await o.get('/api/apps/hk-c/hook/rotate')).status, 405);
+  const big = await fetch(url, { method: 'POST', headers: { 'X-GitHub-Event': 'push', 'X-Hub-Signature-256': hmac(h2.secret, 'x'), 'X-Forwarded-For': '10.7.0.1' }, body: 'x'.repeat(11 * 1024 * 1024) });
+  assert.equal(big.status, 413);
+  let last; for (let i = 0; i < 7; i++) last = await fetch(url, { method: 'POST', headers: { 'X-GitHub-Event': 'push', 'X-Hub-Signature-256': 'sha256=' + '0'.repeat(64), 'X-Forwarded-For': '10.6.0.1' }, body: '{}' });
+  assert.equal(last.status, 429);
+  const nonGit = await o.post('/api/deploy', { repo: 'https://gitlab.com/a/b.git', name: 'hk-gl', domain: 'hk-gl.example.net' }); assert.equal(nonGit.status, 202); await waitJob(o, 'hk-gl');
+  assert.equal((await o.get('/api/apps/hk-gl/hook')).status, 400);                  // only github.com repos
+});

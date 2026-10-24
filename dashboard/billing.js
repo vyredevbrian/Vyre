@@ -46,6 +46,7 @@ function open(file, cfg = {}) {
     CREATE TABLE IF NOT EXISTS unmatched(tx TEXT PRIMARY KEY, ts INTEGER NOT NULL, from_addr TEXT, amount_nano INTEGER NOT NULL, block INTEGER);
     CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS app_owner(app TEXT PRIMARY KEY, account INTEGER NOT NULL REFERENCES accounts(id));
+    CREATE TABLE IF NOT EXISTS hooks(id TEXT PRIMARY KEY, account INTEGER NOT NULL REFERENCES accounts(id), repo TEXT NOT NULL, secret TEXT NOT NULL, created INTEGER NOT NULL, UNIQUE(account, repo));
     CREATE TABLE IF NOT EXISTS invites(code TEXT PRIMARY KEY, created INTEGER NOT NULL, used_by INTEGER);`);
 
   const st = (sql) => { const s = db.prepare(sql); s.setReadBigInts(true); return s; };
@@ -74,6 +75,10 @@ function open(file, cfg = {}) {
     ownerOf: st('SELECT account FROM app_owner WHERE app = ?'),
     delOwner: st('DELETE FROM app_owner WHERE app = ?'),
     appsOf: st('SELECT COUNT(*) AS n FROM app_owner WHERE account = ?'),
+    hookOf: st('SELECT id, account, repo, secret FROM hooks WHERE account = ? AND repo = ?'),
+    hookById: st('SELECT id, account, repo, secret FROM hooks WHERE id = ?'),
+    insHook: st('INSERT INTO hooks(id, account, repo, secret, created) VALUES (?,?,?,?,?)'),
+    rotHook: st('UPDATE hooks SET secret = ? WHERE id = ?'),
     insInvite: st('INSERT INTO invites(code, created) VALUES (?, ?)'),
     useInvite: st('UPDATE invites SET used_by = ? WHERE code = ? AND used_by IS NULL'),
     all: st('SELECT * FROM accounts ORDER BY id'),
@@ -164,6 +169,17 @@ function open(file, cfg = {}) {
     ownerOf: (app) => { const r = q.ownerOf.get(app); return r ? Number(r.account) : null; },
     removeOwner: (app) => q.delOwner.run(app),
     appCount: (account) => Number(q.appsOf.get(account).n),
+
+    // ---- GitHub webhooks: one per account and repository ("owner/name", lower case) ----
+    hookFor(account, repo) {
+      const row = q.hookOf.get(account, repo);
+      if (row) return { id: row.id, account: Number(row.account), repo: row.repo, secret: row.secret };
+      const h = { id: crypto.randomBytes(12).toString('hex'), secret: crypto.randomBytes(32).toString('hex') };
+      q.insHook.run(h.id, account, repo, h.secret, Date.now());
+      return { id: h.id, account, repo, secret: h.secret };
+    },
+    hookById: (id) => { const r = q.hookById.get(String(id)); return r ? { id: r.id, account: Number(r.account), repo: r.repo, secret: r.secret } : null; },
+    rotateHook(id) { const secret = crypto.randomBytes(32).toString('hex'); q.rotHook.run(secret, String(id)); return secret; },
 
     summary: () => ({ creditSold: q.sold.get().s, creditOwed: q.owed.get().s, unmatched: q.unm.all().length }),
     close: () => db.close(),

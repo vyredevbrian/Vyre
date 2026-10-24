@@ -53,6 +53,11 @@ Claude Code (fixed token instead of sign-in): `claude mcp add --transport http v
 
 Anyone with the token can deploy code to your server, so treat it like the dashboard password. To apply on an existing server: `git pull` in `/opt/vyre`, then `docker compose --env-file .env -f server/compose.yml up -d --build`.
 
+## Auto-deploy from GitHub
+
+Open an app in the dashboard and click **Auto-deploy from GitHub**. It shows a webhook address and a secret. In the repo on GitHub: Settings, Webhooks, Add webhook; paste the address, set the content type to `application/json`, paste the secret, choose "Just the push event".
+After that, every push to the app's branch rebuilds every app of yours that comes from that repository (one webhook covers a repo that feeds several apps). Nothing runs unless GitHub's signature checks out; several quick pushes become one extra build; a customer's push is skipped, and noted in the app's log, when their credit is too low. The owner is never charged. Only `github.com` repos are supported. "New secret" replaces the secret if it leaks.
+
 ## Customers and billing
 
 Built and tested, **not yet switched on or deployed**: customer accounts, a prepaid balance paid in USDC on VYRE, build-time charging, invite-only signup, per-account app ownership, and an owner view.

@@ -18,7 +18,7 @@ paid in **USDC on VYRE (chain 3045)**, priced one third under Vercel, **free for
   - `server.js`: accounts and sessions, signup and login with limits, per-account app scoping, billing and admin endpoints, charging, customer safety rules.
   - `public/index.html`: login and signup, billing card with top-up instructions, owner admin card.
   - `oauth.js` and `mcp.js`: the owner's MCP connector (unchanged; owner level only).
-- Tests: `node --no-warnings --test dashboard/test/billing.test.js dashboard/test/server.test.js` (27 tests, all pass). Do not run `node --test dashboard/test/` (the folder form fails on this Node).
+- Tests: `node --no-warnings --test dashboard/test/billing.test.js dashboard/test/server.test.js` (32 tests, all pass). Do not run `node --test dashboard/test/` (the folder form fails on this Node).
 - Related: `bin/vyre` (deploy tool), `runtime/vercel/` (Vercel-style functions runtime), `server/compose.yml` (all settings), `docs/FEATURES.md` (checklist).
 
 ## 3. Live state (not secret)
@@ -66,7 +66,7 @@ accepted only if its A record already points at this server (that is the proof i
 token**: the token is the owner's and could read the owner's private repos); builds stop after 30 minutes; at most `CUSTOMER_MAX_APPS` (3) apps each; invite codes are used up atomically with the account;
 unknown emails cost the same time as wrong passwords; the owner account cannot be reached by email login; endpoints for the owner (`/api/admin/*`, `/api/system`, `/api/usage`) answer 403 to customers.
 
-Checked: 27 tests, including a fake VYRE chain, a stand-in for the deploy tool, and these cheating cases: replaying a transaction, paying one wei or one micro-USDC off, paying the right amount to the wrong
+Checked: 32 tests, including a fake VYRE chain, a stand-in for the deploy tool, and these cheating cases: replaying a transaction, paying one wei or one micro-USDC off, paying the right amount to the wrong
 wallet, a failed transfer, a block that is too new, a block with no timestamp, history from before switch-on, a wrong chain, a bad RPC answer, an expired invoice, a customer reaching another's app (logs, env, redeploy,
 delete), taking another's app name, leaking secrets into a build, the reserved and unresolved domains, the app limit, old apps with no owner, the owner being charged. **Mutation check:** 12 deliberate breaks of
 the code (6 in the money and chain logic, 6 in the server rules) were each caught by a failing test.
@@ -169,3 +169,14 @@ That means nobody has used it; **whether the owner holds its key was not verifie
      guessing one would either fail or open a hole.** After setting it, the app can register and connect.
   Either way the connection has full owner power over the server (deploy, delete, env names). Treat the token and the password like keys; changing the dashboard password signs every OAuth connection out.
 - Anyone who writes the other AI apps' setup instructions should say which of the two ways is used, and that these tools can deploy and delete.
+
+## 16. Auto-deploy from GitHub (added after the sections above)
+
+- **How it works.** `POST /hooks/github/<hook id>` (no login; GitHub calls it). One webhook per account and repository (`owner/name`, lower case), each with its own random secret kept in the `hooks` table. The server rebuilds the raw body's HMAC-SHA256,
+  compares it in constant time with `X-Hub-Signature-256`, and only then reads the payload. A push to a branch redeploys every app of that account whose repo matches and whose configured branch equals the pushed branch. Management: `GET /api/apps/<name>/hook`
+  (creates the hook if needed and returns URL, secret, branch and the apps it covers) and `POST /api/apps/<name>/hook/rotate`. In the dashboard: open an app, "Auto-deploy from GitHub".
+- **Rules.** `ping` answers 200; other events and non-branch refs, deletions, other branches and other repositories are ignored. A repeated GitHub delivery id is ignored. Pushes during a running build are queued and run once afterwards (one extra build, however many pushes).
+  A customer's push is skipped, and noted in the app's log, unless the account has the five build minutes of credit; owners are never gated or charged. Accounts never cross: a hook only touches that account's apps. Bodies over 10 MB get 413; five bad requests a minute from one address get 429. Only `https://github.com/<owner>/<name>` repos qualify.
+- **Checked.** 5 added tests, plus 8 deliberate breaks (signature, repo, branch, account isolation, credit gate, queueing, duplicate runs, repeat deliveries) each caught by a failing test. Not checked: a real GitHub webhook delivery (the tests send their own signed requests; GitHub's real payload shape was not captured).
+- **Not set up.** The webhooks are not yet added on GitHub for the live sites, and the owner must add each one by hand (GitHub repo, Settings, Webhooks). The Texas repo feeds four apps with one webhook. The server needs `git pull` and the compose rebuild to get this feature.
+- **Not built.** Preview deployments per branch; commit status back to GitHub; private-repo auto-deploys for customers (customer builds never get the owner's GitHub token, so a customer's private repo cannot be cloned at all); non-GitHub hosts.
