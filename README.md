@@ -53,6 +53,11 @@ Claude Code (fixed token instead of sign-in): `claude mcp add --transport http v
 
 Anyone with the token can deploy code to your server, so treat it like the dashboard password. To apply on an existing server: `git pull` in `/opt/vyre`, then `docker compose --env-file .env -f server/compose.yml up -d --build`.
 
+## Customers and billing
+
+Built and tested, **not yet switched on or deployed**: customer accounts, a prepaid balance paid in USDC on VYRE, build-time charging, invite-only signup, per-account app ownership, and an owner view.
+The owner is never charged. Read `docs/BILLING-HANDOFF.md` for how it works, what is proven, what is not, the settings, and the owner's open decisions. Tests: `node --no-warnings --test dashboard/test/billing.test.js dashboard/test/server.test.js`.
+
 ## Usage metering and pricing (groundwork)
 
 Every deploy records its build time in `/opt/vyre/usage.jsonl`; the dashboard shows this month's build minutes (`/api/usage`).

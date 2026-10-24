@@ -10,4 +10,4 @@ WORKDIR /app
 COPY *.js ./
 COPY public ./public
 ENV PORT=3000
-CMD ["node", "server.js"]
+CMD ["node", "--no-warnings", "server.js"]

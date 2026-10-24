@@ -50,12 +50,12 @@ Tier 1 = needed before moving the real sites. Tier 2 = makes it a product. Tier 
 
 | Feature | Status | Tier | Plan |
 | --- | --- | --- | --- |
-| Accounts and teams, each customer sees only their apps | [ ] | 2 | Replaces the single shared password |
-| Owner account that is never charged | [ ] | 2 | |
-| Per-account limits (apps, memory, builds) | [ ] | 2 | Container limits already exist |
-| Prepaid balance paid in USDC on VYRE | [ ] | 2 | Watch incoming transfers on chain 3045; no private key on the server; receiving wallet to be chosen by the owner |
-| Metering | [~] build minutes recorded | 2 | Price build minutes at a third under Vercel (re-check their prices first) |
-| Invoice / overdue states | [ ] | 3 | Pause new builds at zero balance; keep running sites up |
+| Accounts and teams, each customer sees only their apps | [~] accounts and per-account apps built and tested; no teams, no email verification or password reset | 2 | Not deployed yet |
+| Owner account that is never charged | [x] built and tested | 2 | |
+| Per-account limits (apps, memory, builds) | [~] app count, memory and CPU limits, build timeout, credit needed to build | 2 | Network isolation and abuse limits not built |
+| Prepaid balance paid in USDC on VYRE | [~] built; tested on a fake chain only; off until the owner sets the receiving wallet | 2 | Rehearse on testnet 7357; see `docs/BILLING-HANDOFF.md` |
+| Metering | [~] build minutes charged to customers at two thirds of Vercel's Standard price | 2 | Re-check Vercel's price before any public claim; runtime and bandwidth not metered |
+| Invoice / overdue states | [~] new builds refused below five minutes of credit; running sites stay up | 3 | Invoice emails and receipts not built |
 
 ## Platform and safety
 

@@ -21,6 +21,19 @@ services:
       MCP_TOKEN: ${MCP_TOKEN:-}
       DASH_DOMAIN: ${DASH_DOMAIN}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      # billing and customers (all optional; off until set in /opt/vyre/.env)
+      SIGNUPS: ${SIGNUPS:-closed}
+      PAY_TO: ${PAY_TO:-}
+      CHAIN_RPC: ${CHAIN_RPC:-https://rpc.vyrechain.com}
+      CHAIN_ID: ${CHAIN_ID:-3045}
+      CONFIRM_SECONDS: ${CONFIRM_SECONDS:-15}
+      SERVER_IP: ${SERVER_IP:-}
+      APPS_DOMAIN: ${APPS_DOMAIN:-}
+      RESERVED_ZONES: ${RESERVED_ZONES:-vyrechain.com}
+      CUSTOMER_MAX_APPS: ${CUSTOMER_MAX_APPS:-3}
+      PRICE_BUILD_PER_MIN_USDC: ${PRICE_BUILD_PER_MIN_USDC:-}
+      MIN_TOPUP_USDC: ${MIN_TOPUP_USDC:-5}
+      MAX_TOPUP_USDC: ${MAX_TOPUP_USDC:-500}
     networks: [vyre]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

@@ -48,22 +48,34 @@ pre{margin:12px 0 0;background:var(--bg);border:1px solid var(--line);border-rad
 .down{color:var(--bad)}.hide{display:none}
 .lg{max-width:420px;margin:12vh auto 0}.lg img{margin-bottom:28px}
 @media(max-width:600px){main{padding:0 16px 40px}.top{height:68px}}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px;margin:8px 0}.kv b{font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.06em}
+.big{font-family:var(--mono);font-size:26px;letter-spacing:.02em}.ok{color:var(--lime)}.neg{color:var(--bad)}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}.tbl td,.tbl th{padding:6px 8px;border-top:1px solid var(--line);text-align:left;vertical-align:top;overflow-wrap:anywhere}.tbl th{color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.08em;border-top:0}
+.box{border:1px solid var(--lime);border-radius:10px;padding:14px;margin-top:12px;background:rgba(205,247,20,.05)}.code{font-family:var(--mono);font-size:13px;overflow-wrap:anywhere;user-select:all}
+.tabs{display:flex;gap:8px;margin-bottom:12px}.tabs button.on{border-color:var(--lime);color:var(--lime)}
+.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.inline input{flex:1 1 140px;min-width:0}
 </style>
 </head>
 <body>
 <main>
-<div id="login" class="lg hide"><img src="assets/logo.png" alt="VYRE"><p class="eyebrow">Deploy</p><h1>Sign <em>in</em></h1><p class="sub"></p><div class="card">
-<form id="lf"><input id="pw" type="password" placeholder="Password" autocomplete="current-password"><p id="le" class="down"></p><button class="p">Sign in</button></form></div></div>
+<div id="login" class="lg hide"><img src="assets/logo.png" alt="VYRE"><p class="eyebrow">Deploy</p><h1>Sign <em>in</em></h1><p class="sub"></p>
+<div class="card">
+<div class="tabs" id="tabs"><button type="button" id="tin" class="on">Sign in</button><button type="button" id="tup" class="hide">Create account</button></div>
+<form id="lf"><input id="em" type="email" placeholder="Email (leave empty for the owner password)" autocomplete="username" style="margin-bottom:10px">
+<input id="pw" type="password" placeholder="Password" autocomplete="current-password" style="margin-bottom:10px">
+<input id="iv" class="hide" type="text" placeholder="Invite code" autocomplete="off" style="margin-bottom:10px">
+<p id="le" class="down"></p><button class="p" id="lb">Sign in</button></form></div></div>
 
 <div id="app" class="hide">
-<div class="top"><img src="assets/logo.png" alt="VYRE"><button id="out">Sign out</button></div>
+<div class="top"><img src="assets/logo.png" alt="VYRE"><div class="inline"><span class="mut" id="who"></span><button id="out">Sign out</button></div></div>
 <p class="eyebrow">Vyre Deploy</p><h1>Your apps. <em>Your server.</em></h1><p class="sub">Push a repo, get a site on your own domain with HTTPS.</p>
-<div class="card stats" id="sys"></div>
+<div class="card stats hide" id="sys"></div>
+<div class="card" id="bill"></div>
 <div class="card"><h2>New project</h2>
 <form id="df" class="row">
 <input name="repo" placeholder="https://github.com/you/repo.git" required>
 <input name="name" placeholder="name (e.g. mysite)" required>
-<input name="domain" placeholder="domain (e.g. mysite.com)" required>
+<input name="domain" placeholder="domain(s), comma separated" id="dom">
 <input name="port" placeholder="port (3000)" type="number">
 <input name="branch" placeholder="branch (main)">
 <input name="root" placeholder="folder in repo (optional)">
@@ -73,40 +85,79 @@ pre{margin:12px 0 0;background:var(--bg);border:1px solid var(--line);border-rad
 <p class="mut">Environment variables (names only; one KEY=VALUE per line to set)</p>
 <p id="keys" class="mut"></p><textarea id="vars" rows="3" placeholder="KEY=value"></textarea>
 <p><button id="sv">Save (then redeploy)</button></p><pre id="log"></pre></div>
+<div class="card hide" id="admin"></div>
 </div>
 </main>
 <script>
-const $=s=>document.querySelector(s);let cur=null,timer=null;
+const $=s=>document.querySelector(s);let cur=null,timer=null,me=null,cfg={signups:'closed'},mode='in',loop=null;
 const api=async(p,o={})=>{const r=await fetch(p,{method:o.m||'GET',headers:{'Content-Type':'application/json'},body:o.b?JSON.stringify(o.b):undefined});
- if(r.status===401&&p!=='/api/login'){show(false);throw 0}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Error');return j};
+ if(r.status===401&&!['/api/login','/api/signup'].includes(p)){show(false);throw 0}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Error');return j};
 const show=a=>{$('#login').classList.toggle('hide',a);$('#app').classList.toggle('hide',!a)};
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e};
 const gb=b=>(b/1073741824).toFixed(1)+' GB';
-const bar=(l,u,t)=>{const d=document.createElement('div');d.textContent='';const bb=document.createElement('b');bb.textContent=l.toUpperCase()+'  '+gb(u)+' / '+gb(t);d.append(bb);const b=document.createElement('div');b.className='bar';const i=document.createElement('i');i.style.width=Math.min(100,u/t*100||0)+'%';b.append(i);d.append(b);return d};
-async function sys(){const s=await api('/api/system');const u=await api('/api/usage');const e=$('#sys');e.replaceChildren(bar('Memory',s.memTotal-s.memAvailable,s.memTotal),bar('Disk',s.diskUsed,s.diskSize));const l=document.createElement('div');const lb=document.createElement('b');lb.textContent='LOAD  '+s.load.join(' ');l.append(lb);e.append(l);const ub=document.createElement('div');const ubb=document.createElement('b');ubb.textContent='BUILD MIN ('+u.month+')  '+u.buildMinutes;ub.append(ubb);e.append(ub)}
-async function list(){const a=await api('/api/apps');const box=$('#apps');box.replaceChildren();
- if(!a.length){const p=document.createElement('p');p.className='mut';p.textContent='No projects yet.';box.append(p)}
- for(const x of a){const c=document.createElement('div');c.className='card app';const l=document.createElement('div');
-  const t=document.createElement('span');t.className='nm';t.textContent=x.name;const lk=document.createElement('a');lk.href='https://'+x.domain;lk.target='_blank';lk.rel='noopener';lk.textContent=x.domain;
-  const st=document.createElement('div');st.className='pill'+(x.status.startsWith('Up')||x.deploying?'':' down');const dot=document.createElement('i');st.append(dot,x.deploying?'Deploying':x.status.startsWith('Up')?'Live':'Not running');
-  l.append(t,lk,st);const acts=document.createElement('div');acts.className='acts';
-  const mk=(txt,f,cls)=>{const b=document.createElement('button');b.textContent=txt;if(cls)b.className=cls;b.onclick=f;return b};
-  acts.append(mk('Manage',()=>open(x.name)),mk('Redeploy',async()=>{await api(`/api/apps/${x.name}/redeploy`,{m:'POST'});open(x.name)}),
+const when=t=>new Date(t).toLocaleString();
+const bar=(l,u,t)=>{const d=el('div');d.append(el('b','',l.toUpperCase()+'  '+gb(u)+' / '+gb(t)));const b=el('div','bar'),i=el('i');i.style.width=Math.min(100,u/t*100||0)+'%';b.append(i);d.append(b);return d};
+async function sys(){const s=await api('/api/system'),u=await api('/api/usage'),e=$('#sys');e.classList.remove('hide');
+ e.replaceChildren(bar('Memory',s.memTotal-s.memAvailable,s.memTotal),bar('Disk',s.diskUsed,s.diskSize),el('div','','').appendChild(el('b','','LOAD  '+s.load.join(' '))).parentNode,el('div','','').appendChild(el('b','','BUILD MIN ('+u.month+')  '+u.buildMinutes)).parentNode)}
+async function list(){const a=await api('/api/apps'),box=$('#apps');box.replaceChildren();
+ if(!a.length)box.append(el('p','mut','No projects yet.'));
+ for(const x of a){const c=el('div','card app'),l=el('div');
+  const lk=el('a','',x.domain);lk.href='https://'+x.domain;lk.target='_blank';lk.rel='noopener';
+  const st=el('div','pill'+(x.status.startsWith('Up')||x.deploying?'':' down'));st.append(el('i'),x.deploying?'Deploying':x.status.startsWith('Up')?'Live':'Not running');
+  l.append(el('span','nm',x.name),lk,st);if(x.account)l.append(el('div','mut','account: '+x.account));
+  const acts=el('div','acts');const mk=(t,f,cls)=>{const b=el('button',cls||'',t);b.onclick=f;return b};
+  acts.append(mk('Manage',()=>open(x.name)),mk('Redeploy',async()=>{try{await api(`/api/apps/${x.name}/redeploy`,{m:'POST'});open(x.name)}catch(e){alert(e.message)}}),
    mk('Delete',async()=>{if(confirm(`Delete ${x.name}?`)){await api(`/api/apps/${x.name}`,{m:'DELETE'});list()}},'d'));
   c.append(l,acts);box.append(c)}}
 async function open(n){cur=n;$('#detail').classList.remove('hide');$('#dt').textContent=n;
  const k=await api(`/api/apps/${n}/env`);$('#keys').textContent=k.keys.length?k.keys.join(', '):'(none)';tick()}
 async function tick(){clearTimeout(timer);if(!cur)return;
- const d=await api(`/api/apps/${cur}/deploy-log`);let text=d.text;
- if(!text){text=(await api(`/api/apps/${cur}/logs`)).text}
- const el=$('#log');el.textContent=text;el.scrollTop=el.scrollHeight;
- if(d.running)timer=setTimeout(tick,2000);else list()}
+ const d=await api(`/api/apps/${cur}/deploy-log`);let text=d.text;if(!text)text=(await api(`/api/apps/${cur}/logs`)).text;
+ const e=$('#log');e.textContent=text;e.scrollTop=e.scrollHeight;if(d.running)timer=setTimeout(()=>{tick();bill()},2000);else{list();bill()}}
+async function bill(){const b=await api('/api/billing'),box=$('#bill');box.replaceChildren(el('h2','','Billing'));
+ const owner=b.role==='owner';
+ const kv=el('div','kv');
+ kv.append(el('b','','Balance'),el('span','big '+(owner?'':'ok'),owner?'Free (owner)':b.balance.usdc+' USDC'));
+ kv.append(el('b','','Build price'),el('span','',b.price.buildPerMinute+' USDC per build minute'));
+ if(!owner)kv.append(el('b','','To build'),el('span','mut','needs at least '+b.price.minToBuild+' USDC of credit'));
+ box.append(kv);
+ if(!owner){
+  if(!b.pay.enabled)box.append(el('p','mut','Adding credit is not switched on yet.'));
+  else{const f=el('div','inline'),amt=el('input');amt.type='text';amt.placeholder='Amount in USDC (min '+b.pay.min+')';amt.inputMode='decimal';
+   const go=el('button','p','Add credit');go.onclick=async()=>{try{const i=await api('/api/billing/topup',{m:'POST',b:{usdc:amt.value}});invoice(box,i)}catch(e){alert(e.message)}};f.append(amt,go);box.append(f)}
+  const open=b.invoices.find(i=>i.status==='open'&&i.expires>Date.now());
+  if(open&&b.pay.enabled&&!box.querySelector('.box'))invoice(box,{usdc:open.usdc,to:b.pay.to,chainId:b.pay.chainId,expires:open.expires});}
+ if(b.ledger.length){const t=el('table','tbl'),h=el('tr');['When','What','USDC'].forEach(x=>h.append(el('th','',x)));t.append(h);
+  for(const r of b.ledger.slice(0,10)){const tr=el('tr');tr.append(el('td','',when(r.ts)),el('td','',(r.note||r.kind)),el('td',r.usdc.startsWith('-')?'neg':'ok',r.usdc));t.append(tr)}box.append(t)}}
+function invoice(box,i){const old=box.querySelector('.box');if(old)old.remove();const d=el('div','box');
+ d.append(el('p','','Send exactly this amount of USDC on VYRE (chain '+i.chainId+'), from any wallet, to this address. The exact amount is how your payment is matched to your account.'));
+ const kv=el('div','kv');kv.append(el('b','','Amount'),el('span','code ok',i.usdc+' USDC'),el('b','','To'),el('span','code',i.to),el('b','','Expires'),el('span','',when(i.expires)));d.append(kv);
+ d.append(el('p','mut','Credit appears within a minute of the payment. Do not round the amount: a different amount is not matched automatically.'));box.append(d)}
+async function admin(){const o=await api('/api/admin/overview'),box=$('#admin');box.classList.remove('hide');box.replaceChildren(el('h2','','Owner: accounts and payments'));
+ const kv=el('div','kv');kv.append(el('b','','Credit sold'),el('span','',o.creditSold+' USDC'),el('b','','Credit owed'),el('span','',o.creditOwed+' USDC'),el('b','','Signups'),el('span','',o.signups));
+ kv.append(el('b','','Payment watcher'),el('span',o.chain&&!o.chain.lastError?'ok':'neg',!o.chain?'off (no receiving wallet set)':(o.chain.lastError?('error: '+o.chain.lastError):('ok, block '+(o.chain.cursor??'?')))));box.append(kv);
+ const t=el('table','tbl'),h=el('tr');['Account','Role','Balance','Apps'].forEach(x=>h.append(el('th','',x)));t.append(h);
+ for(const a of o.accounts){const tr=el('tr');tr.append(el('td','',a.email),el('td','',a.role),el('td','',a.role==='owner'?'-':a.balance),el('td','',String(a.apps)));t.append(tr)}box.append(t);
+ const inv=el('div','inline');inv.style.marginTop='12px';const ib=el('button','','New invite code'),ic=el('span','code');ib.onclick=async()=>{ic.textContent=(await api('/api/admin/invite',{m:'POST'})).code};inv.append(ib,ic);box.append(inv);
+ const cr=el('div','inline');cr.style.marginTop='12px';const ce=el('input'),ca=el('input'),cn=el('input'),cb=el('button','','Add credit');ce.placeholder='customer email';ca.placeholder='USDC';cn.placeholder='note';
+ cb.onclick=async()=>{try{const r=await api('/api/admin/credit',{m:'POST',b:{email:ce.value,usdc:ca.value,note:cn.value}});alert('Balance now '+r.balance+' USDC');admin()}catch(e){alert(e.message)}};cr.append(ce,ca,cn,cb);box.append(cr);
+ if(o.unmatched.length){box.append(el('p','mut','Payments that matched no invoice (not credited):'));const u=el('table','tbl');for(const x of o.unmatched){const tr=el('tr');tr.append(el('td','code',x.tx),el('td','',x.usdc+' USDC'),el('td','',x.from||''));u.append(tr)}box.append(u)}}
 $('#dc').onclick=()=>{cur=null;$('#detail').classList.add('hide')};
 $('#sv').onclick=async()=>{try{await api(`/api/apps/${cur}/env`,{m:'POST',b:{vars:$('#vars').value}});$('#vars').value='';open(cur)}catch(e){alert(e.message)}};
 $('#df').onsubmit=async e=>{e.preventDefault();$('#de').textContent='';const f=Object.fromEntries(new FormData(e.target));
  try{await api('/api/deploy',{m:'POST',b:f});e.target.reset();await list();open(f.name)}catch(x){$('#de').textContent=x.message}};
-$('#lf').onsubmit=async e=>{e.preventDefault();try{await api('/api/login',{m:'POST',b:{password:$('#pw').value}});$('#pw').value='';start()}catch(x){$('#le').textContent=x.message}};
-$('#out').onclick=async()=>{await api('/api/logout',{m:'POST'}).catch(()=>{});show(false)};
-async function start(){try{await sys();show(true);list();setInterval(()=>{sys().catch(()=>{});if(!cur)list().catch(()=>{})},15000)}catch{show(false)}}
+function setMode(m){mode=m;$('#tin').classList.toggle('on',m==='in');$('#tup').classList.toggle('on',m==='up');$('#iv').classList.toggle('hide',!(m==='up'&&cfg.signups==='invite'));$('#lb').textContent=m==='in'?'Sign in':'Create account';$('#pw').autocomplete=m==='in'?'current-password':'new-password';$('#le').textContent=''}
+$('#tin').onclick=()=>setMode('in');$('#tup').onclick=()=>setMode('up');
+$('#lf').onsubmit=async e=>{e.preventDefault();try{
+ if(mode==='in')await api('/api/login',{m:'POST',b:{email:$('#em').value,password:$('#pw').value}});
+ else await api('/api/signup',{m:'POST',b:{email:$('#em').value,password:$('#pw').value,invite:$('#iv').value}});
+ $('#pw').value='';start()}catch(x){$('#le').textContent=x.message}};
+$('#out').onclick=async()=>{await api('/api/logout',{m:'POST'}).catch(()=>{});clearInterval(loop);show(false)};
+async function start(){try{cfg=await fetch('/api/config').then(r=>r.json());$('#tup').classList.toggle('hide',cfg.signups==='closed');
+ me=await api('/api/me');$('#who').textContent=me.role==='owner'?'owner':me.email;show(true);
+ $('#dom').placeholder=me.role!=='owner'&&cfg.appsDomain?'domain (optional: free name.'+cfg.appsDomain+')':'domain(s), comma separated';
+ const jobs=[list(),bill()];if(me.role==='owner'){jobs.push(sys(),admin())}else{$('#sys').classList.add('hide');$('#admin').classList.add('hide')}
+ await Promise.all(jobs);clearInterval(loop);loop=setInterval(()=>{if(me.role==='owner')sys().catch(()=>{});bill().catch(()=>{});if(!cur)list().catch(()=>{})},15000)}catch{try{cfg=await fetch('/api/config').then(r=>r.json());$('#tup').classList.toggle('hide',cfg.signups==='closed')}catch{}show(false)}}
 start();
 </script>
 </body>
