@@ -27,6 +27,8 @@ vyre ls
 vyre logs mysite -f
 ```
 
+Several domains: give a comma-separated list. The first is the main address and the others redirect to it, for example `vyre deploy <repo> site example.com,www.example.com` serves `example.com` and sends `www` there. Point every domain's DNS at the server before deploying, so the HTTPS certificates can be issued straight away.
+
 Private repos: use an HTTPS URL with a GitHub token (`https://<token>@github.com/you/repo.git`) or add a deploy key on the server.
 
 ## Not built yet (next steps)

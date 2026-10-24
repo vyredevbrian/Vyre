@@ -82,7 +82,7 @@ async function listApps() {
     const m = meta(name);
     const ps = await run('docker', ['ps', '-a', '--filter', `label=vyre.app=${name}`, '--format', '{{.Status}}']);
     const job = deployLogs.get(name);
-    return { name, domain: m.DOMAIN, repo: m.REPO.replace(/\/\/[^@/]*@/, '//***@'), branch: m.BRANCH, port: m.PORT, status: ps.out.trim() || 'not running', deploying: !!(job && job.running) };
+    return { name, domain: m.DOMAIN.split(',')[0], aliases: m.DOMAIN.split(',').slice(1), repo: m.REPO.replace(/\/\/[^@/]*@/, '//***@'), branch: m.BRANCH, port: m.PORT, status: ps.out.trim() || 'not running', deploying: !!(job && job.running) };
   }));
 }
 
@@ -99,7 +99,8 @@ function deployArgs(b) {
   const port = String(b.port || 3000), branch = b.branch || 'main';
   if (!/^https:\/\/\S+$/.test(repo)) return { error: 'Repo must be an https:// git URL' };
   if (!NAME_RE.test(name)) return { error: 'Name: lowercase letters, digits, dashes' };
-  if (!DOMAIN_RE.test(domain)) return { error: 'Invalid domain' };
+  const doms = String(domain).split(',');
+  if (doms.length > 8 || !doms.every((d) => DOMAIN_RE.test(d))) return { error: 'Invalid domain' };
   if (!/^\d{2,5}$/.test(port)) return { error: 'Invalid port' };
   if (!BRANCH_RE.test(branch)) return { error: 'Invalid branch' };
   const root = b.root || '';

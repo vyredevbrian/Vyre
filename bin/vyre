@@ -7,7 +7,7 @@ RUNTIME=$(dirname "$(dirname "$(readlink -f "$0")")")/runtime/vercel
 
 usage() {
   cat <<USAGE
-vyre deploy <git-url> <name> <domain> [--port 3000] [--branch main] [--mem 512m] [--root dist/site]   build + (re)deploy an app
+vyre deploy <git-url> <name> <domain[,alias,...]> [--port 3000] [--branch main] [--mem 512m] [--root dist/site]   build + (re)deploy an app
 vyre redeploy <name>                                                  pull latest and redeploy
 vyre env <name> KEY=VALUE ...                                         set env vars (then redeploy)
 vyre ls                                                               list apps
@@ -47,6 +47,21 @@ DOCKER
   rm -rf "$b"
 }
 
+# Caddy labels for a comma-separated domain list: the first domain serves the app, the others redirect to it.
+domain_labels() {
+  local list=$1 port=$2 first rest i=0 d
+  first=${list%%,*}; rest=${list#"$first"}; rest=${rest#,}
+  echo "--label"; echo "caddy=$first"
+  echo "--label"; echo "caddy.reverse_proxy={{upstreams $port}}"
+  echo "--label"; echo "caddy.encode=gzip zstd"
+  IFS=, read -ra extra <<< "$rest"
+  for d in "${extra[@]}"; do
+    [ -n "$d" ] || continue; i=$((i+1))
+    echo "--label"; echo "caddy_$i=$d"
+    echo "--label"; echo "caddy_$i.redir=https://$first{uri} permanent"
+  done
+}
+
 build_and_run() {
   local name=$1 dir=$APPS/$1
   local domain port branch tag
@@ -76,15 +91,14 @@ build_and_run() {
   fi
 
   touch "$dir/.env"
+  local labels=(); mapfile -t labels < <(domain_labels "$domain" "$port")
   local old; old=$(docker ps -aq --filter "label=vyre.app=$name")
   docker run -d --name "vyre-$name-new" --restart unless-stopped --network vyre \
     --env-file "$dir/.env" -e PORT="$port" \
     --memory "$mem" --memory-swap "$mem" --cpus "${VYRE_CPUS:-1}" \
     --log-opt max-size=10m --log-opt max-file=3 \
     --label "vyre.app=$name" \
-    --label "caddy=$domain" \
-    --label "caddy.reverse_proxy={{upstreams $port}}" \
-    --label "caddy.encode=gzip zstd" \
+    "${labels[@]}" \
     "$tag" >/dev/null
 
   sleep 5
@@ -97,7 +111,7 @@ build_and_run() {
   [ -n "$old" ] && docker rm -f $old >/dev/null
   docker rename "vyre-$name-new" "vyre-$name"
   docker image prune -f >/dev/null
-  echo "Deployed https://$domain"
+  echo "Deployed https://${domain%%,*}"
 }
 
 cmd=${1:-}; shift || true
@@ -108,6 +122,9 @@ case $cmd in
     while [ $# -gt 0 ]; do
       case $1 in --port) port=$2;; --branch) branch=$2;; --mem) mem=$2;; --root) root=$2;; *) usage;; esac; shift 2
     done
+    IFS=, read -ra doms <<< "$domain"
+    [ "${#doms[@]}" -le 8 ] || { echo "too many domains" >&2; exit 1; }
+    for d in "${doms[@]}"; do [[ $d =~ ^([a-z0-9-]+\.)+[a-z]{2,}$ ]] || { echo "bad domain: $d" >&2; exit 1; }; done
     [[ $root =~ ^[A-Za-z0-9._/-]*$ && $root != *..* && $root != /* ]] || { echo "bad --root" >&2; exit 1; }
     [[ $name =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "name must be lowercase letters, digits, dashes" >&2; exit 1; }
     mkdir -p "$APPS/$name"
@@ -125,7 +142,7 @@ case $cmd in
       sed -i "/^$k=/d" "$APPS/$name/.env"; echo "$k=$v" >> "$APPS/$name/.env"
     done
     echo "Saved. Run: vyre redeploy $name" ;;
-  ls) for d in "$APPS"/*/; do [ -f "$d/app.conf" ] && echo "$(basename "$d")  https://$(meta "$(basename "$d")" DOMAIN)"; done ;;
+  ls) for d in "$APPS"/*/; do [ -f "$d/app.conf" ] && echo "$(basename "$d")  https://$(meta "$(basename "$d")" DOMAIN | cut -d, -f1)"; done ;;
   logs) [ -n "${1:-}" ] || usage; docker logs ${2:+"$2"} --tail 200 "vyre-$1" ;;
   rm) [ -n "${1:-}" ] || usage; docker rm -f $(docker ps -aq --filter "label=vyre.app=$1") 2>/dev/null || true; rm -rf "${APPS:?}/$1" ;;
   *) usage ;;

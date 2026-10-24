@@ -17,7 +17,7 @@ Tier 1 = needed before moving the real sites. Tier 2 = makes it a product. Tier 
 | Rollback / promote | [ ] | 1 | Keep the last N images; "make this live" re-runs the container from an old image |
 | Preview deployments per branch | [ ] | 2 | Container per branch at `<branch>-<app>.preview.<domain>`; needs a wildcard DNS record; auto-delete when the branch is deleted |
 | Environment variables, per environment (production / preview) | [~] one set per app, names only, no edit or delete in the UI | 1 | Separate sets per environment; edit and delete; redeploy hint |
-| Domains | [~] one domain per app, HTTPS automatic | 1 | Add several domains and redirects per app; show the DNS record to create and whether it points here |
+| Domains | [~] several domains per app with redirects to the first, HTTPS automatic | 1 | Show the DNS record to create and whether it points here; edit domains without redeploying |
 | GitHub project picker (click a repo, deploy it) | [ ] | 2 | GitHub App (or OAuth) so private repos work too; created on your GitHub account |
 | Deployment retention | [ ] | 2 | Keep last N images and logs; weekly docker cleanup already runs |
 
