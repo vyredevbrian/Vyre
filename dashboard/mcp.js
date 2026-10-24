@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const tools = [
   { name: 'system_status', description: 'Server memory, swap, disk and load.', inputSchema: { type: 'object', properties: {} }, run: (c) => c.sysInfo() },
   { name: 'list_apps', description: 'List deployed apps with domain, branch, port and container status.', inputSchema: { type: 'object', properties: {} }, run: (c) => c.listApps() },
+  { name: 'billing_overview', description: 'Read-only: customer accounts and balances, credit sold and owed, payment watcher status and any payments that matched no invoice.', inputSchema: { type: 'object', properties: {} }, run: (c) => c.adminOverview() },
   {
     name: 'deploy_app', description: 'Build and deploy a git repo (https URL) to a domain. Runs in the background; poll get_deploy_log. Redeploying an existing name replaces it.',
     inputSchema: { type: 'object', required: ['repo', 'name', 'domain'], properties: { repo: { type: 'string' }, name: { type: 'string' }, domain: { type: 'string' }, port: { type: 'number' }, branch: { type: 'string' }, root: { type: 'string', description: 'Folder inside the repo to serve, e.g. dist/spring' } } },

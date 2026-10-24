@@ -18,7 +18,7 @@ paid in **USDC on VYRE (chain 3045)**, priced one third under Vercel, **free for
   - `server.js`: accounts and sessions, signup and login with limits, per-account app scoping, billing and admin endpoints, charging, customer safety rules.
   - `public/index.html`: login and signup, billing card with top-up instructions, owner admin card.
   - `oauth.js` and `mcp.js`: the owner's MCP connector (unchanged; owner level only).
-- Tests: `node --no-warnings --test dashboard/test/billing.test.js dashboard/test/server.test.js` (25 tests, all pass). Do not run `node --test dashboard/test/` (the folder form fails on this Node).
+- Tests: `node --no-warnings --test dashboard/test/billing.test.js dashboard/test/server.test.js` (26 tests, all pass). Do not run `node --test dashboard/test/` (the folder form fails on this Node).
 - Related: `bin/vyre` (deploy tool), `runtime/vercel/` (Vercel-style functions runtime), `server/compose.yml` (all settings), `docs/FEATURES.md` (checklist).
 
 ## 3. Live state (not secret)
@@ -66,7 +66,7 @@ accepted only if its A record already points at this server (that is the proof i
 token**: the token is the owner's and could read the owner's private repos); builds stop after 30 minutes; at most `CUSTOMER_MAX_APPS` (3) apps each; invite codes are used up atomically with the account;
 unknown emails cost the same time as wrong passwords; the owner account cannot be reached by email login; endpoints for the owner (`/api/admin/*`, `/api/system`, `/api/usage`) answer 403 to customers.
 
-Checked: 25 tests, including a fake VYRE chain, a stand-in for the deploy tool, and these cheating cases: replaying a transaction, paying one wei or one micro-USDC off, paying the right amount to the wrong
+Checked: 26 tests, including a fake VYRE chain, a stand-in for the deploy tool, and these cheating cases: replaying a transaction, paying one wei or one micro-USDC off, paying the right amount to the wrong
 wallet, a failed transfer, a block that is too new, a block with no timestamp, history from before switch-on, a wrong chain, a bad RPC answer, an expired invoice, a customer reaching another's app (logs, env, redeploy,
 delete), taking another's app name, leaking secrets into a build, the reserved and unresolved domains, the app limit, old apps with no owner, the owner being charged. **Mutation check:** 12 deliberate breaks of
 the code (6 in the money and chain logic, 6 in the server rules) were each caught by a failing test.
@@ -135,3 +135,15 @@ sign or send a transaction as an agent; push only the designated branch. This re
   **not** credit older payments; credit those by hand).
 - Rotate the dashboard password: it also signs every MCP connection out. The signing secret for sessions comes from the dashboard password.
 - Updating the server: `git pull` in `/opt/vyre`, then the compose command in section 3.
+
+## 13. Go-live checklist
+
+The receiving wallet has been chosen by the owner (it is set only in `/opt/vyre/.env`, not in this repo). Checked on VYRE mainnet on 2026-10-24: a valid address, a plain wallet (no contract code), no balance, no transactions yet.
+That means nobody has used it; **whether the owner holds its key was not verified.** Before a customer pays, prove control: send 1 USDC to it from another wallet, then send 0.5 USDC back out.
+
+1. Update the server: `cd /opt/vyre && git pull`.
+2. In `/opt/vyre/.env` add: `PAY_TO=<the wallet>`, `SERVER_IP=147.182.171.109`, `APPS_DOMAIN=deploy.vyrechain.com`, `SIGNUPS=closed`, and for the rehearsal `MIN_TOPUP_USDC=1`.
+3. Rebuild: `docker compose --env-file .env -f server/compose.yml up -d --build`, then `docker ps` and `docker logs vyre-dashboard` (the dashboard image has not been built in the build environment, so read the logs).
+4. Rehearse with real money, small: owner view, "New invite code"; sign up a test customer with it; "Add credit" for 1 USDC; send exactly the shown amount from a different wallet; within about a minute the balance appears; deploy a tiny test site and check the charge and the ledger;
+   send a deliberately wrong amount and check it shows under unmatched and is not credited. The `billing_overview` tool on the MCP connector shows the same information without the dashboard.
+5. Then set `MIN_TOPUP_USDC` back to 5 (or the owner's choice). Keep signups invite-only until a security review and written terms exist.

@@ -197,7 +197,15 @@ async function setEnv(name, vars) {
   return r.ok ? null : 'Failed to save';
 }
 
-const core = { APPS, NAME_RE, meta, listApps: () => listApps(null), sysInfo, deployArgs, startJob: (n, a) => startJob(n, a, null), readEnvKeys, setEnv, run, VYRE, deployLogs };
+function adminOverview() {
+  const s = billing.summary();
+  return { accounts: billing.accounts().map((a) => ({ id: a.id, email: a.email, role: a.role, balance: Billing.fmt(a.balance), apps: billing.appCount(a.id) })),
+    creditSold: Billing.fmt(s.creditSold), creditOwed: Billing.fmt(s.creditOwed), signups: SIGNUPS,
+    chain: PAY_TO ? { payTo: PAY_TO, ...(watcher ? watcher.state : { lastError: 'watcher off' }) } : null,
+    unmatched: billing.unmatched().map((u) => ({ tx: u.tx, from: u.from, usdc: Billing.fmt(u.amount), block: u.block })) };
+}
+
+const core = { adminOverview, APPS, NAME_RE, meta, listApps: () => listApps(null), sysInfo, deployArgs, startJob: (n, a) => startJob(n, a, null), readEnvKeys, setEnv, run, VYRE, deployLogs };
 
 const moneyJson = (a) => ({ usdc: Billing.fmt(a), nano: a.toString() });
 function billingView(acct) {
@@ -263,13 +271,7 @@ async function api(req, res, url) {
     if (!isAdmin) return send(res, 403, { error: 'Not allowed' });
     if (url.pathname === '/api/system') return send(res, 200, await sysInfo());
     if (url.pathname === '/api/usage') return send(res, 200, usageThisMonth());
-    if (url.pathname === '/api/admin/overview') {
-      const s = billing.summary();
-      return send(res, 200, { accounts: billing.accounts().map((a) => ({ id: a.id, email: a.email, role: a.role, balance: Billing.fmt(a.balance), apps: billing.appCount(a.id) })),
-        creditSold: Billing.fmt(s.creditSold), creditOwed: Billing.fmt(s.creditOwed), signups: SIGNUPS,
-        chain: PAY_TO ? { payTo: PAY_TO, ...(watcher ? watcher.state : { lastError: 'watcher off' }) } : null,
-        unmatched: billing.unmatched().map((u) => ({ tx: u.tx, from: u.from, usdc: Billing.fmt(u.amount), block: u.block })) });
-    }
+    if (url.pathname === '/api/admin/overview') return send(res, 200, adminOverview());
     if (url.pathname === '/api/admin/invite' && req.method === 'POST') return send(res, 200, { code: billing.createInvite() });
     if (url.pathname === '/api/admin/credit' && req.method === 'POST') {
       const { email = '', usdc = '', note = '' } = await readBody(req);

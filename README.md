@@ -45,7 +45,7 @@ Apps run as plain Docker containers, so one droplet is a single point of failure
 The dashboard also serves an MCP endpoint at `https://<DASH_DOMAIN>/mcp` (Streamable HTTP, bearer-token auth).
 `bootstrap.sh` prints the token and stores it as `MCP_TOKEN` in `/opt/vyre/.env`; leave it unset to disable MCP.
 
-Tools: `system_status`, `list_apps`, `deploy_app`, `redeploy_app`, `get_deploy_log`, `get_app_logs`, `list_env_keys`, `set_env`, `delete_app` (needs `confirm` = app name). Env values are never returned.
+Tools: `system_status`, `list_apps`, `billing_overview` (read-only), `deploy_app`, `redeploy_app`, `get_deploy_log`, `get_app_logs`, `list_env_keys`, `set_env`, `delete_app` (needs `confirm` = app name). Env values are never returned.
 
 **Claude app / claude.ai connector:** Settings, Connectors, Add custom connector, URL `https://deploy.vyrechain.com/mcp`, leave any client ID and secret fields empty, Connect. A Vyre sign-in page opens; enter the dashboard password. The server speaks OAuth 2.1 (discovery, dynamic client registration, PKCE) and only accepts Claude and localhost callbacks. Changing the dashboard password signs every connection out.
 

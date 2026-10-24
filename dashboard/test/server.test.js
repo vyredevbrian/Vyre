@@ -56,7 +56,7 @@ const client = () => { // each client is a different visitor address, as Caddy w
 test.before(async () => {
   await new Promise((r) => rpc.listen(0, '127.0.0.1', r));
   server = spawn('node', ['--no-warnings', path.join(__dirname, '../server.js')], {
-    env: { PATH: process.env.PATH, NODE_ENV: 'test', PORT: String(port), DASH_PASSWORD: 'ownerpw-123', VYRE_APPS: APPS, VYRE_BIN: stub, VYRE_DB: path.join(tmp, 'b.db'), VYRE_USAGE: path.join(tmp, 'u.jsonl'),
+    env: { PATH: process.env.PATH, NODE_ENV: 'test', PORT: String(port), DASH_PASSWORD: 'ownerpw-123', MCP_TOKEN: 'mcp-test-token', VYRE_APPS: APPS, VYRE_BIN: stub, VYRE_DB: path.join(tmp, 'b.db'), VYRE_USAGE: path.join(tmp, 'u.jsonl'),
       SIGNUPS: 'invite', PAY_TO: PAY, CHAIN_RPC: `http://127.0.0.1:${rpc.address().port}`, CHAIN_ID: '3045', CONFIRM_SECONDS: '1', WATCH_MS: '150', SERVER_IP: '1.2.3.4',
       APPS_DOMAIN: 'apps.example.com', DASH_DOMAIN: 'deploy.example.com', RESERVED_ZONES: 'vyrechain.com', CUSTOMER_MAX_APPS: '2', PRICE_BUILD_PER_MIN_USDC: '0.6', MIN_TOPUP_USDC: '1',
       DNS_MOCK: JSON.stringify({ 'mine.com': ['1.2.3.4'], 'www.mine.com': ['1.2.3.4'], 'other.com': ['9.9.9.9'] }), GITHUB_TOKEN: 'ghp_owner_secret_token' },
@@ -221,4 +221,13 @@ test('owner can add credit by hand, and bad requests are refused', async () => {
   assert.equal((await o.post('/api/admin/credit', { email: 'manual@x.com', usdc: 'abc' })).status, 400);
   assert.equal((await o.post('/api/admin/credit', { email: 'manual@x.com', usdc: '0' })).status, 400);
   const l = (await c.get('/api/billing')).json.ledger; assert.equal(l[0].note, 'welcome');
+});
+
+test('the MCP connector exposes a read-only billing overview, and only with the token', async () => {
+  const call = (token) => fetch(base + '/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'billing_overview', arguments: {} } }) });
+  assert.equal((await call(null)).status, 401);
+  assert.equal((await call('wrong')).status, 401);
+  const r = await (await call('mcp-test-token')).json(); const o = JSON.parse(r.result.content[0].text);
+  assert.ok(Array.isArray(o.accounts) && o.accounts.some((a) => a.role === 'owner'));
+  assert.equal(o.chain.payTo, PAY); assert.ok(o.creditSold && o.creditOwed); assert.ok(!JSON.stringify(o).includes('pw'));
 });
