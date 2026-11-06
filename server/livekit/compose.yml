@@ -1,0 +1,28 @@
+# LiveKit (voice and video for web apps), behind the same Caddy that serves the sites. Run by install.sh; do not edit /opt/livekit/compose.yml by hand.
+services:
+  livekit:
+    image: ${LK_IMAGE:-livekit/livekit-server:latest}
+    command: --config /etc/livekit.yaml
+    restart: unless-stopped
+    mem_limit: 1g                      # so a busy call cannot starve the sites on this server
+    networks: [vyre]
+    ports:
+      - "7881:7881/tcp"                # WebRTC over TCP (fallback)
+      - "7882:7882/udp"                # WebRTC media, single-port mode
+      - "3478:3478/udp"                # TURN (UDP)
+      - "5349:5349/tcp"                # TURN over TLS
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+      - caddy_data:/caddy-data:ro      # Caddy's certificate for the TURN-over-TLS port (read only)
+    labels:
+      caddy: ${LK_DOMAIN}
+      caddy.reverse_proxy: "{{upstreams 7880}}"   # signalling (WebSocket upgrades pass through Caddy)
+
+networks:
+  vyre:
+    external: true
+
+volumes:
+  caddy_data:
+    external: true
+    name: ${CADDY_VOLUME}
